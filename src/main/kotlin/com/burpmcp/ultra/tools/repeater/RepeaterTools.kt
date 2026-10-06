@@ -16,7 +16,9 @@ object RepeaterTools {
                 "Creates a new Repeater tab with the specified request, allowing manual " +
                 "replay and modification. Parameters: request (raw HTTP request string), " +
                 "host (target hostname), port (target port number), use_tls (boolean, " +
-                "whether to use HTTPS), tab_name (optional, name for the Repeater tab).",
+                "whether to use HTTPS), tab_name (optional, name for the Repeater tab), " +
+                "http2 (optional, create a native HTTP/2 Repeater tab; pseudo-headers are " +
+                "derived from the target and illegal-in-h2 headers are dropped automatically).",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
                     putJsonObject("request") { put("type", "string"); put("description", "Raw HTTP request string") }
@@ -24,6 +26,7 @@ object RepeaterTools {
                     putJsonObject("port") { put("type", "integer"); put("description", "Target port number") }
                     putJsonObject("use_tls") { put("type", "boolean"); put("description", "Whether to use HTTPS (TLS)") }
                     putJsonObject("tab_name") { put("type", "string"); put("description", "Optional name for the Repeater tab") }
+                    putJsonObject("http2") { put("type", "boolean"); put("description", "Create a native HTTP/2 Repeater tab (default false = HTTP/1.1)") }
                 },
                 required = listOf("request", "host", "port")
             )
@@ -47,8 +50,9 @@ object RepeaterTools {
                     )
                 val useTls = args["use_tls"]?.jsonPrimitive?.booleanOrNull ?: false
                 val tabName = args["tab_name"]?.jsonPrimitive?.contentOrNull
+                val http2 = args["http2"]?.jsonPrimitive?.booleanOrNull ?: false
 
-                val result = bridge.sendToRepeater(rawRequest, host, port, useTls, tabName)
+                val result = bridge.sendToRepeater(rawRequest, host, port, useTls, tabName, http2)
                 CallToolResult(content = listOf(TextContent(result.toString())))
             } catch (e: Exception) {
                 CallToolResult(

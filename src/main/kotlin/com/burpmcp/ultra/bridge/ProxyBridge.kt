@@ -77,7 +77,8 @@ class ProxyBridge(
         includeRequest: Boolean = false,
         includeResponse: Boolean = false,
         statusCodeRange: String? = null,
-        maxResponseLength: Int? = null
+        maxResponseLength: Int? = null,
+        order: String? = null
     ): JsonObject {
         // Resolve the optional MIME type filter up front so an unrecognized value
         // produces a clear error instead of silently dropping the filter (which
@@ -121,11 +122,15 @@ class ProxyBridge(
         }
 
         val allItems = api.proxy().history(filter)
+        // "latest" flips to newest-first so an agent can watch fresh traffic
+        // without paging to the end of the history.
+        val ordered = if (order.equals("latest", ignoreCase = true)) allItems.asReversed() else allItems
         val totalFiltered = allItems.size
-        val slice = allItems.drop(startIndex).take(count.coerceIn(0, 1000))
+        val slice = ordered.drop(startIndex).take(count.coerceIn(0, 1000))
 
         return buildJsonObject {
             put("total_filtered", totalFiltered)
+            put("order", order?.lowercase() ?: "oldest")
             put("start_index", startIndex)
             put("returned", slice.size)
             put("items", buildJsonArray {
@@ -196,6 +201,103 @@ class ProxyBridge(
             put("items", buildJsonArray {
                 limited.forEach { item ->
                     add(serializeHistoryItem(item, includeRequest, includeResponse, maxResponseLength ?: 200_000))
+                }
+            })
+        }
+    }
+
+    /**
+     * Aggregates proxy history into traffic statistics for rapid triage:
+     * totals, method/status/MIME distributions, top hosts and endpoints,
+     * slowest requests (from proxy TimingData) and largest responses.
+     *
+     * @param host Optional hostname filter (case-insensitive substring).
+     * @param inScopeOnly When true, only aggregate in-scope items.
+     * @param topN Size of the "top N" lists (default 10, capped at 50).
+     * @return JSON object of aggregate counters and leaderboards.
+     */
+    fun getTrafficStats(host: String?, inScopeOnly: Boolean, topN: Int): JsonObject {
+        val cap = topN.coerceIn(1, 50)
+
+        val filter = ProxyHistoryFilter { item ->
+            if (inScopeOnly && !item.request().isInScope()) return@ProxyHistoryFilter false
+            if (host != null && !item.host().contains(host, ignoreCase = true)) return@ProxyHistoryFilter false
+            true
+        }
+
+        val items = api.proxy().history(filter)
+
+        val methods = HashMap<String, Int>()
+        val statusClasses = HashMap<String, Int>()
+        val mimes = HashMap<String, Int>()
+        val hosts = HashMap<String, Int>()
+        val endpoints = HashMap<String, Int>()
+        val slowest = ArrayList<Triple<String, Long, Int>>()   // url, ms, status
+        val largest = ArrayList<Triple<String, Int, Int>>()    // url, bytes, status
+        var inScope = 0
+        var withResponse = 0
+        var errorCount = 0
+        var totalBodyBytes = 0L
+        var totalMillis = 0L
+        var timedCount = 0
+
+        for (item in items) {
+            val method = item.method()
+            methods.merge(method, 1, Int::plus)
+            hosts.merge(item.host(), 1, Int::plus)
+            // Endpoints keyed on path only (query strings would explode the
+            // cardinality); method+path is usually what triage wants.
+            endpoints.merge("$method ${item.path()}", 1, Int::plus)
+            if (item.request().isInScope()) inScope++
+            if (!item.hasResponse()) continue
+            withResponse++
+            val resp = item.response()
+            val sc = resp.statusCode().toInt()
+            statusClasses.merge("${sc / 100}xx", 1, Int::plus)
+            if (sc >= 400) errorCount++
+            val mime = try { item.mimeType().name } catch (_: Exception) { "UNKNOWN" }
+            mimes.merge(mime, 1, Int::plus)
+            val bodySize = resp.body().length()
+            totalBodyBytes += bodySize
+            largest.add(Triple(item.url(), bodySize, sc))
+            // TimingData is only populated for items proxied while timing was
+            // recorded; guard against nulls and zero-duration placeholders.
+            val td = try { item.timingData() } catch (_: Exception) { null }
+            val ms = td?.timeBetweenRequestSentAndEndOfResponse()?.toMillis() ?: -1
+            if (ms >= 0) {
+                totalMillis += ms
+                timedCount++
+                slowest.add(Triple(item.url(), ms, sc))
+            }
+        }
+
+        fun <K> top(map: Map<K, Int>): List<Pair<K, Int>> =
+            map.entries.sortedByDescending { it.value }.take(cap).map { it.key to it.value }
+
+        return buildJsonObject {
+            put("total_items", items.size)
+            put("with_response", withResponse)
+            put("in_scope", inScope)
+            put("unique_hosts", hosts.size)
+            put("error_responses", errorCount)
+            put("total_response_body_bytes", totalBodyBytes)
+            if (timedCount > 0) {
+                put("avg_response_ms", Math.round(totalMillis.toDouble() / timedCount))
+                put("timed_items", timedCount)
+            }
+            put("methods", buildJsonObject { top(methods).forEach { (k, v) -> put(k.toString(), v) } })
+            put("status_classes", buildJsonObject { top(statusClasses).forEach { (k, v) -> put(k.toString(), v) } })
+            put("mime_types", buildJsonObject { top(mimes).forEach { (k, v) -> put(k.toString(), v) } })
+            put("top_hosts", buildJsonArray { top(hosts).forEach { (k, v) -> add(buildJsonObject { put("host", k.toString()); put("count", v) }) } })
+            put("top_endpoints", buildJsonArray { top(endpoints).forEach { (k, v) -> add(buildJsonObject { put("endpoint", k.toString()); put("count", v) }) } })
+            put("slowest_requests", buildJsonArray {
+                slowest.sortedByDescending { it.second }.take(cap).forEach { (url, ms, sc) ->
+                    add(buildJsonObject { put("url", url); put("ms", ms); put("status", sc) })
+                }
+            })
+            put("largest_responses", buildJsonArray {
+                largest.sortedByDescending { it.second }.take(cap).forEach { (url, bytes, sc) ->
+                    add(buildJsonObject { put("url", url); put("bytes", bytes); put("status", sc) })
                 }
             })
         }

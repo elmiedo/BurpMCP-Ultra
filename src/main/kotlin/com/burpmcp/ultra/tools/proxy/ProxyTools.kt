@@ -11,7 +11,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.serialization.json.*
 
 /**
- * Registers all 13 proxy MCP tools onto the given [Server].
+ * Registers all 14 proxy MCP tools onto the given [Server].
  *
  * Each tool delegates to the [ProxyBridge] and catches exceptions so
  * that errors are returned as structured JSON inside a [CallToolResult]
@@ -39,6 +39,7 @@ object ProxyTools {
                     putJsonObject("include_request") { put("type", "boolean"); put("description", "Include full request text (default false). Also unmasks sensitive request header values (Cookie, Authorization, …) which are otherwise redacted in request_headers") }
                     putJsonObject("include_response") { put("type", "boolean"); put("description", "Include full response text (default false)") }
                     putJsonObject("in_scope_only") { put("type", "boolean"); put("description", "Restrict to in-scope items (default false)") }
+                    putJsonObject("order") { put("type", "string"); put("description", "'oldest' (default, oldest-first) or 'latest' (newest-first, so start_index 0 is the most recent item)") }
                     putJsonObject("max_response_length") { put("type", "integer"); put("description", "Truncate response text to this length") }
                 },
                 required = emptyList()
@@ -57,10 +58,15 @@ object ProxyTools {
                 val includeResponse = args["include_response"]?.jsonPrimitive?.booleanOrNull ?: false
                 val inScopeOnly = args["in_scope_only"]?.jsonPrimitive?.booleanOrNull ?: false
                 val maxResponseLength = args["max_response_length"]?.jsonPrimitive?.intOrNull
+                val order = args["order"]?.jsonPrimitive?.contentOrNull
+
+                EnumValidation.error(order, setOf("oldest", "latest"), "order")?.let {
+                    return@addTool CallToolResult(content = listOf(TextContent(it.toString())), isError = true)
+                }
 
                 val result = bridge.getHistory(
                     startIndex, count, host, method, statusCode, mimeType,
-                    inScopeOnly, includeRequest, includeResponse, statusCodeRange, maxResponseLength
+                    inScopeOnly, includeRequest, includeResponse, statusCodeRange, maxResponseLength, order
                 )
                 CallToolResult(content = listOf(TextContent(result.toString())))
             } catch (e: Exception) {
@@ -615,6 +621,42 @@ object ProxyTools {
                     put("host_pattern", hostPattern)
                     put("note", "Use proxy_remove_rule with rule_id to deactivate")
                 }.toString())))
+            } catch (e: Exception) {
+                CallToolResult(
+                    content = listOf(TextContent(buildJsonObject {
+                        put("error", e.message ?: "Unknown error")
+                    }.toString())),
+                    isError = true
+                )
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // 14. proxy_traffic_stats
+        // ---------------------------------------------------------------
+        server.addTool(
+            name = "proxy_traffic_stats",
+            description = "Aggregate proxy history into traffic statistics for rapid triage: totals, " +
+                "method/status-class/MIME distributions, top hosts and endpoints (method + path), " +
+                "slowest requests (from proxy timing data, where available) and largest responses. " +
+                "Read-only; useful as the first call after browsing a target to decide where to dig.",
+            inputSchema = ToolSchema(
+                properties = buildJsonObject {
+                    putJsonObject("host") { put("type", "string"); put("description", "Filter by host (case-insensitive substring)") }
+                    putJsonObject("in_scope_only") { put("type", "boolean"); put("description", "Restrict to in-scope items (default false)") }
+                    putJsonObject("top_n") { put("type", "integer"); put("description", "Size of top-N lists (default 10, max 50)") }
+                },
+                required = emptyList()
+            )
+        ) { request ->
+            try {
+                val args = request.params.arguments ?: emptyMap()
+                val host = args["host"]?.jsonPrimitive?.contentOrNull
+                val inScopeOnly = args["in_scope_only"]?.jsonPrimitive?.booleanOrNull ?: false
+                val topN = args["top_n"]?.jsonPrimitive?.intOrNull ?: 10
+
+                val result = bridge.getTrafficStats(host, inScopeOnly, topN)
+                CallToolResult(content = listOf(TextContent(result.toString())))
             } catch (e: Exception) {
                 CallToolResult(
                     content = listOf(TextContent(buildJsonObject {

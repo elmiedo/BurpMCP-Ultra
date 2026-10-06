@@ -1,0 +1,434 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/identity-matrix.schema.json",
+  "title": "HTTP Agent Identity Matrix",
+  "description": "Four-layer credential/identity model for a fleet of web+API agents, plus an optional reusable renewal policy. Root validates a single record of any kind (switched by `kind`). A whole config file validates against $defs/registry. Secrets live in a vault; records carry only vault:// references. Referential integrity (cross-record links, precedence subset, id uniqueness) is NOT expressible here — enforce it with validate_registry.py. EXECUTION CONTRACT (Burp Suite Pro MCP): Montoya's upstream proxy is global (config_upstream_proxy_set), so there is no per-request egress. The system is therefore HYBRID, routing by operation type: (1) passive operations (site map, proxy history, passive checks) run Burp-native and ignore egress; (2) active operations needing parallel per-identity egress run through the manager's own HTTP client (httpx+socks) — binding.execution='parallel', many identities concurrent; (3) active operations needing Burp-native tooling (Scanner/Intruder/Repeater) run Burp-native under binding.execution='burp-native', which serialises on a global egress lock — exactly one identity/egress active at a time. A burp-native binding with concurrency >1 is meaningless (the global upstream serialises regardless) and is rejected by validate_registry.py.",
+
+  "oneOf": [
+    { "$ref": "#/$defs/credential" },
+    { "$ref": "#/$defs/identity" },
+    { "$ref": "#/$defs/binding" },
+    { "$ref": "#/$defs/session" },
+    { "$ref": "#/$defs/renewalPolicy" }
+  ],
+
+  "$defs": {
+
+    "vaultRef":        { "type": "string", "pattern": "^vault://[^\\s]+$", "description": "Indirection to secret material. Plaintext secrets never live in a record." },
+    "duration":        { "type": "string", "pattern": "^[0-9]+[smhd]$", "description": "e.g. 30m, 12h, 7d" },
+    "credentialId":    { "type": "string", "pattern": "^cred:[A-Za-z0-9._-]+$" },
+    "identityId":      { "type": "string", "pattern": "^id:[A-Za-z0-9._-]+$" },
+    "sessionId":       { "type": "string", "pattern": "^sess:[A-Za-z0-9._-]+$" },
+    "renewalPolicyId": { "type": "string", "pattern": "^renewal:[A-Za-z0-9._-]+$" },
+    "egressRef":       { "type": "string", "pattern": "^egress:[A-Za-z0-9._-]+$" },
+    "fingerprintRef":  { "type": "string", "pattern": "^fp:[A-Za-z0-9._-]+$" },
+
+    "injectTarget":  { "enum": ["header", "cookie", "query", "tls", "signer"] },
+    "status":        { "enum": ["active", "expiring", "expired", "quarantined", "rotating"] },
+    "credentialType":{ "enum": ["basic","bearer","api-key","oauth2","jwt","session-cookie","signed-cookie","tls-client-cert","hmac-signature","digest","totp-seed"] },
+
+    "scope": {
+      "type": "object",
+      "description": "Where this credential is allowed to be applied.",
+      "properties": {
+        "hosts": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Host patterns, suffix-match with a dot boundary. '*.acme.example' matches a.acme.example and x.y.acme.example (any non-empty left label) but NOT the bare acme.example and NOT notacme.example. A bare 'acme.example' matches only itself. List both to cover apex + subdomains." },
+        "paths": { "type": "array", "items": { "type": "string" } },
+        "realm": { "type": "string", "format": "uri" }
+      },
+      "required": ["hosts"],
+      "additionalProperties": false
+    },
+
+    "application": {
+      "type": "object",
+      "description": "How/where the credential is placed into the request.",
+      "properties": {
+        "inject":   { "$ref": "#/$defs/injectTarget" },
+        "name":     { "type": "string", "description": "Header/cookie/query parameter name." },
+        "template": { "type": "string", "description": "e.g. 'Bearer {access_token}'." },
+        "encoding": { "enum": ["raw", "base64", "form"] }
+      },
+      "required": ["inject"],
+      "additionalProperties": false
+    },
+
+    "lifecycle": {
+      "type": "object",
+      "properties": {
+        "status":         { "$ref": "#/$defs/status" },
+        "not_after":      { "type": "string", "format": "date-time", "description": "Absolute hard expiry of the seed itself (not the session)." },
+        "rotation":       { "enum": ["auto", "manual", "none"] },
+        "fail_count":     { "type": "integer", "minimum": 0 },
+        "fail_threshold": { "type": "integer", "minimum": 1 },
+        "last_used":      { "type": "string", "format": "date-time" }
+      },
+      "required": ["status"],
+      "additionalProperties": false
+    },
+
+    "renewalPolicyBody": {
+      "type": "object",
+      "description": "Keepalive/refresh policy. absolute_ttl is the hard lifetime from issuance; idle_timeout is the sliding window the server resets on each activity. keepalive attacks idle; refresh/reauth attack absolute.",
+      "properties": {
+        "methods":             { "type": "array", "items": { "enum": ["none","refresh","keepalive","reauth"] }, "minItems": 1, "uniqueItems": true, "description": "Agent-side renewal actions. The server's own sliding of the idle window is a server property modelled by idle_timeout + keepalive, not a method here." },
+        "absolute_ttl":        { "$ref": "#/$defs/duration", "description": "Assumed hard lifetime of a fresh identifier." },
+        "idle_timeout":        { "$ref": "#/$defs/duration", "description": "Idle time after which the server drops the session." },
+        "idle_timeout_source": { "enum": ["declared", "observed", "default"] },
+        "keepalive": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "object",
+              "properties": {
+                "method":       { "enum": ["GET", "POST", "HEAD", "PUT", "OPTIONS"] },
+                "path":         { "type": "string" },
+                "expect_status":{ "type": "integer", "minimum": 100, "maximum": 599 }
+              },
+              "required": ["method", "path"],
+              "additionalProperties": false
+            },
+            "margin":   { "$ref": "#/$defs/duration", "description": "Fire this long before the idle deadline." },
+            "interval": { "$ref": "#/$defs/duration", "description": "Explicit cadence; otherwise derived as idle_timeout - margin." },
+            "jitter":   { "$ref": "#/$defs/duration" }
+          },
+          "required": ["request"],
+          "additionalProperties": false
+        },
+        "refresh": {
+          "type": "object",
+          "properties": {
+            "endpoint": { "type": "string", "format": "uri" },
+            "grace":    { "$ref": "#/$defs/duration" }
+          },
+          "required": ["endpoint"],
+          "additionalProperties": false
+        },
+        "max_renewals": { "type": "integer", "minimum": 0, "description": "0 = unlimited; otherwise force a re-mint after N renewals." }
+      },
+      "required": ["methods"],
+      "allOf": [
+        {
+          "$comment": "if keepalive is a declared method, its config must be present",
+          "if":   { "properties": { "methods": { "contains": { "const": "keepalive" } } }, "required": ["methods"] },
+          "then": { "required": ["keepalive"] }
+        },
+        {
+          "$comment": "if refresh is a declared method, its config must be present",
+          "if":   { "properties": { "methods": { "contains": { "const": "refresh" } } }, "required": ["methods"] },
+          "then": { "required": ["refresh"] }
+        }
+      ]
+    },
+
+    "renewalPolicy": {
+      "type": "object",
+      "description": "Optional reusable renewal policy, referenced from credential.renewal_ref.",
+      "properties": {
+        "kind": { "const": "renewal-policy" },
+        "id":   { "$ref": "#/$defs/renewalPolicyId" }
+      },
+      "required": ["kind", "id"],
+      "allOf": [ { "$ref": "#/$defs/renewalPolicyBody" } ],
+      "unevaluatedProperties": false
+    },
+
+    "oauth2Config": {
+      "type": "object",
+      "properties": {
+        "grant":              { "enum": ["client_credentials", "authorization_code"] },
+        "client_id":          { "type": "string" },
+        "client_auth":        { "enum": ["client_secret_basic","client_secret_post","private_key_jwt","tls_client_auth","none"] },
+        "token_endpoint":     { "type": "string", "format": "uri" },
+        "authorize_endpoint": { "type": "string", "format": "uri" },
+        "scopes":             { "type": "array", "items": { "type": "string" } },
+        "modifiers":          { "type": "array", "items": { "enum": ["pkce","dpop","par","rar"] }, "uniqueItems": true }
+      },
+      "required": ["grant", "client_id", "token_endpoint"],
+      "allOf": [
+        {
+          "$comment": "authorization_code needs an authorize endpoint",
+          "if":   { "properties": { "grant": { "const": "authorization_code" } }, "required": ["grant"] },
+          "then": { "required": ["authorize_endpoint"] }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "hmacConfig": {
+      "type": "object",
+      "properties": {
+        "algo":          { "enum": ["aws-sigv4", "azure-sas", "gcp-hmac"] },
+        "region":        { "type": "string" },
+        "service":       { "type": "string" },
+        "access_key_id": { "type": "string", "description": "Public key id; the secret key stays in the vault." }
+      },
+      "required": ["algo"],
+      "additionalProperties": false
+    },
+
+    "tlsConfig": {
+      "type": "object",
+      "properties": {
+        "format":    { "enum": ["pem", "pkcs12"] },
+        "chain_ref": { "$ref": "#/$defs/vaultRef" }
+      },
+      "required": ["format"],
+      "additionalProperties": false
+    },
+
+    "totpConfig": {
+      "type": "object",
+      "properties": {
+        "algo":    { "enum": ["totp", "hotp"] },
+        "digits":  { "type": "integer", "minimum": 6, "maximum": 8 },
+        "period":  { "type": "integer", "minimum": 1 },
+        "counter": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["algo"],
+      "additionalProperties": false
+    },
+
+    "digestConfig": {
+      "type": "object",
+      "properties": {
+        "realm":     { "type": "string" },
+        "qop":       { "enum": ["auth", "auth-int"] },
+        "algorithm": { "enum": ["MD5", "MD5-sess", "SHA-256", "SHA-256-sess"] }
+      },
+      "additionalProperties": false
+    },
+
+    "credential": {
+      "type": "object",
+      "description": "Layer 1 — immutable secret material + where it applies + lifecycle + optional renewal policy.",
+      "properties": {
+        "kind":         { "const": "credential" },
+        "id":           { "$ref": "#/$defs/credentialId" },
+        "type":         { "$ref": "#/$defs/credentialType" },
+        "label":        { "type": "string" },
+        "scope":        { "$ref": "#/$defs/scope" },
+        "secret_ref":   { "$ref": "#/$defs/vaultRef" },
+        "application":  { "$ref": "#/$defs/application" },
+        "lifecycle":    { "$ref": "#/$defs/lifecycle" },
+        "config":       { "type": "object" },
+        "renewal":      { "allOf": [ { "$ref": "#/$defs/renewalPolicyBody" } ], "unevaluatedProperties": false },
+        "renewal_ref":  { "$ref": "#/$defs/renewalPolicyId" }
+      },
+      "required": ["kind", "id", "type", "scope", "secret_ref", "lifecycle"],
+      "allOf": [
+        {
+          "$comment": "inline renewal and a renewal_ref are mutually exclusive",
+          "not": { "required": ["renewal", "renewal_ref"] }
+        },
+        {
+          "$comment": "every type injects into the request except totp-seed (feeds an MFA step)",
+          "if":   { "properties": { "type": { "not": { "const": "totp-seed" } } }, "required": ["type"] },
+          "then": { "required": ["application"] }
+        },
+        {
+          "$comment": "tls-client-cert must inject at the transport layer",
+          "if":   { "properties": { "type": { "const": "tls-client-cert" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "application": { "properties": { "inject": { "const": "tls" } } },
+              "config": { "$ref": "#/$defs/tlsConfig" }
+            },
+            "required": ["config"]
+          }
+        },
+        {
+          "$comment": "hmac-signature computes a per-request signature",
+          "if":   { "properties": { "type": { "const": "hmac-signature" } }, "required": ["type"] },
+          "then": {
+            "properties": {
+              "application": { "properties": { "inject": { "const": "signer" } } },
+              "config": { "$ref": "#/$defs/hmacConfig" }
+            },
+            "required": ["config"]
+          }
+        },
+        {
+          "if":   { "properties": { "type": { "const": "oauth2" } }, "required": ["type"] },
+          "then": { "properties": { "config": { "$ref": "#/$defs/oauth2Config" } }, "required": ["config"] }
+        },
+        {
+          "if":   { "properties": { "type": { "const": "totp-seed" } }, "required": ["type"] },
+          "then": { "properties": { "config": { "$ref": "#/$defs/totpConfig" } }, "required": ["config"] }
+        },
+        {
+          "if":   { "properties": { "type": { "const": "digest" } }, "required": ["type"] },
+          "then": { "properties": { "config": { "$ref": "#/$defs/digestConfig" } } }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "presentation": {
+      "type": "object",
+      "description": "Coherent self-presentation for the persona.",
+      "properties": {
+        "egress_ref":            { "$ref": "#/$defs/egressRef", "description": "Per-identity egress. Enforced by the identity-layer HTTP client, NOT inside Burp: Montoya's upstream proxy is global (config_upstream_proxy_set), so there is no per-request egress. Active Burp tools (Repeater/Scanner/Intruder) replay with their own stack through the global upstream and will NOT honor this; only the manager's client does." },
+        "sticky_egress":         { "type": "boolean" },
+        "http_fingerprint_ref":  { "anyOf": [ { "$ref": "#/$defs/fingerprintRef" }, { "type": "null" } ] },
+        "tls_fingerprint":       { "type": ["string", "null"], "description": "JA3/JA4; must stay coherent with the UA." },
+        "locale":                { "type": "string" },
+        "timezone":              { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "identity": {
+      "type": "object",
+      "description": "Layer 2 — persona: a bundle of credentials (by reference) + presentation.",
+      "properties": {
+        "kind":        { "const": "identity" },
+        "id":          { "$ref": "#/$defs/identityId" },
+        "label":       { "type": "string" },
+        "credentials": { "type": "array", "items": { "$ref": "#/$defs/credentialId" }, "minItems": 1, "uniqueItems": true },
+        "precedence":  { "type": "array", "items": { "$ref": "#/$defs/credentialId" }, "uniqueItems": true, "description": "Preference order when a target accepts several methods; must be a subset of credentials (enforced by validate_registry.py)." },
+        "presentation":{ "$ref": "#/$defs/presentation" }
+      },
+      "required": ["kind", "id", "credentials"],
+      "additionalProperties": false
+    },
+
+    "executionMode": {
+      "enum": ["parallel", "burp-native"],
+      "description": "Who runs active requests. 'parallel' (default): the manager's own HTTP client, honouring per-identity egress, many concurrent. 'burp-native': Burp tools (Scanner/Intruder/Repeater) via the global upstream, serialised under an exclusive egress lock — one identity/egress at a time; egress_ref is honoured only while the lock is held."
+    },
+
+    "dedicatedBinding": {
+      "type": "object",
+      "properties": {
+        "kind":      { "const": "binding" },
+        "mode":      { "const": "dedicated" },
+        "agent":     { "type": "string" },
+        "identity":  { "$ref": "#/$defs/identityId" },
+        "execution": { "$ref": "#/$defs/executionMode" }
+      },
+      "required": ["kind", "mode", "agent", "identity"],
+      "additionalProperties": false
+    },
+
+    "poolBinding": {
+      "type": "object",
+      "properties": {
+        "kind":                         { "const": "binding" },
+        "mode":                         { "const": "shared" },
+        "pool":                         { "type": "string" },
+        "identities":                   { "type": "array", "items": { "$ref": "#/$defs/identityId" }, "minItems": 1, "uniqueItems": true },
+        "strategy":                     { "enum": ["round_robin", "lru", "weighted", "sticky", "random"] },
+        "affinity_key":                 { "type": "string" },
+        "lease_ttl":                    { "$ref": "#/$defs/duration" },
+        "max_concurrent_per_identity":  { "type": "integer", "minimum": 1 },
+        "stateless_fanout":             { "type": "boolean" },
+        "execution":                    { "$ref": "#/$defs/executionMode" }
+      },
+      "required": ["kind", "mode", "pool", "identities", "strategy"],
+      "allOf": [
+        {
+          "$comment": "sticky distribution needs an affinity key",
+          "if":   { "properties": { "strategy": { "const": "sticky" } }, "required": ["strategy"] },
+          "then": { "required": ["affinity_key"] }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+
+    "binding": {
+      "description": "Layer 3 — the matrix: agents x identity + distribution policy.",
+      "oneOf": [
+        { "$ref": "#/$defs/dedicatedBinding" },
+        { "$ref": "#/$defs/poolBinding" }
+      ]
+    },
+
+    "cookie": {
+      "type": "object",
+      "properties": {
+        "name":      { "type": "string" },
+        "value":     { "type": "string" },
+        "domain":    { "type": "string" },
+        "path":      { "type": "string" },
+        "expires":   { "type": "string", "format": "date-time" },
+        "http_only": { "type": "boolean" },
+        "secure":    { "type": "boolean" },
+        "same_site": { "enum": ["Strict", "Lax", "None"] }
+      },
+      "required": ["name", "value"],
+      "additionalProperties": false
+    },
+
+    "bearerState": {
+      "type": "object",
+      "properties": {
+        "access_token": { "type": "string" },
+        "expires_at":   { "type": "string", "format": "date-time" },
+        "refresh_ref":  { "$ref": "#/$defs/vaultRef" },
+        "dpop_key_ref": { "$ref": "#/$defs/vaultRef" }
+      },
+      "required": ["access_token"],
+      "additionalProperties": false
+    },
+
+    "csrfState": {
+      "type": "object",
+      "properties": {
+        "token":  { "type": "string" },
+        "source": { "enum": ["cookie", "meta", "header"] }
+      },
+      "required": ["token"],
+      "additionalProperties": false
+    },
+
+    "timing": {
+      "type": "object",
+      "description": "Session clocks. acquired_at = when the identifier was obtained. expires_at = absolute ceiling. idle_deadline = last_activity + idle_timeout (slides). next_keepalive_due = idle_deadline - margin.",
+      "properties": {
+        "acquired_at":        { "type": "string", "format": "date-time" },
+        "expires_at":         { "type": ["string", "null"], "format": "date-time" },
+        "last_activity":      { "type": "string", "format": "date-time" },
+        "idle_deadline":      { "type": ["string", "null"], "format": "date-time" },
+        "next_keepalive_due": { "type": ["string", "null"], "format": "date-time" },
+        "last_renewed_at":    { "type": "string", "format": "date-time" },
+        "renew_count":        { "type": "integer", "minimum": 0 },
+        "needs_renewal":      { "type": "boolean" }
+      },
+      "required": ["acquired_at"],
+      "additionalProperties": false
+    },
+
+    "session": {
+      "type": "object",
+      "description": "Layer 4 — mutable runtime state derived from a credential. Never written back into the credential.",
+      "properties": {
+        "kind":            { "const": "session" },
+        "id":              { "$ref": "#/$defs/sessionId" },
+        "from_credential": { "$ref": "#/$defs/credentialId" },
+        "identity":        { "$ref": "#/$defs/identityId" },
+        "owner":           { "type": "string", "description": "Agent or lease that currently owns the session." },
+        "cookie_jar":      { "type": "array", "items": { "$ref": "#/$defs/cookie" } },
+        "bearer":          { "$ref": "#/$defs/bearerState" },
+        "csrf":            { "$ref": "#/$defs/csrfState" },
+        "bound_egress":    { "type": "string", "description": "IP the session was born on; pin it." },
+        "timing":          { "$ref": "#/$defs/timing" },
+        "state":           { "enum": ["live", "expiring", "dead"] }
+      },
+      "required": ["kind", "id", "from_credential", "state"],
+      "additionalProperties": false
+    },
+
+    "registry": {
+      "type": "object",
+      "description": "Whole-file validation: the collections together.",
+      "properties": {
+        "credentials":      { "type": "array", "items": { "$ref": "#/$defs/credential" } },
+        "identities":       { "type": "array", "items": { "$ref": "#/$defs/identity" } },
+        "bindings":         { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "sessions":         { "type": "array", "items": { "$ref": "#/$defs/session" } },
+        "renewal_policies": { "type": "array", "items": { "$ref": "#/$defs/renewalPolicy" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{"credentials":[
+  {"kind":"credential","id":"cred:web1","type":"session-cookie","scope":{"hosts":["*.example.com"]},
+   "secret_ref":"vault://kv/web1","application":{"inject":"cookie","name":"SID"},
+   "lifecycle":{"status":"active"},
+   "renewal":{"methods":["keepalive","refresh"],"absolute_ttl":"60m","idle_timeout":"15m",
+     "keepalive":{"request":{"method":"GET","path":"/ping"},"margin":"3m"},
+     "refresh":{"endpoint":"https://idp/token","grace":"60s"}}},
+  {"kind":"credential","id":"cred:plain","type":"api-key","scope":{"hosts":["api.example.com"]},
+   "secret_ref":"vault://kv/k1","application":{"inject":"header","name":"X-Key"},"lifecycle":{"status":"active"}}
+ ],
+ "identities":[
+  {"kind":"identity","id":"id:persona-1","credentials":["cred:web1","cred:plain"],"precedence":["cred:web1"],
+   "presentation":{"egress_ref":"egress:dc-1","sticky_egress":true,"locale":"ru-RU"}}
+ ],
+ "bindings":[
+  {"kind":"binding","mode":"shared","pool":"pool-A","identities":["id:persona-1"],
+   "strategy":"sticky","affinity_key":"agent_id","lease_ttl":"30m","max_concurrent_per_identity":1}
+ ],
+ "sessions":[
+  {"kind":"session","id":"sess:1","from_credential":"cred:web1","identity":"id:persona-1","state":"live",
+   "cookie_jar":[{"name":"SID","value":"xyz","domain":".example.com"}],
+   "timing":{"acquired_at":"2026-10-07T09:00:00Z","idle_deadline":"2026-10-07T09:15:00Z"},"bound_egress":"203.0.113.9"}
+ ]}

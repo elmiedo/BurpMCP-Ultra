@@ -7,13 +7,13 @@
 Drop a single JAR into Burp, connect Claude Code (or any MCP client), and drive every
 part of Burp Suite programmatically through AI agents.
 
-[![Latest release](https://img.shields.io/github/v/release/Cy-S3c/BurpMCP-Ultra?color=1f6feb&label=release)](https://github.com/Cy-S3c/BurpMCP-Ultra/releases/latest)
-[![Build](https://github.com/Cy-S3c/BurpMCP-Ultra/actions/workflows/build.yml/badge.svg)](https://github.com/Cy-S3c/BurpMCP-Ultra/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/elmiedo/BurpMCP-Ultra?color=1f6feb&label=release)](https://github.com/elmiedo/BurpMCP-Ultra/releases/latest)
+[![Build](https://github.com/elmiedo/BurpMCP-Ultra/actions/workflows/build.yml/badge.svg)](https://github.com/elmiedo/BurpMCP-Ultra/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-MIT-3fb950)](#license)
 [![Burp Suite](https://img.shields.io/badge/Burp%20Suite-Professional-ff6633)](https://portswigger.net/burp)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.20-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![MCP tools](https://img.shields.io/badge/MCP%20tools-151-8957e5)](#tools)
-[![Stars](https://img.shields.io/github/stars/Cy-S3c/BurpMCP-Ultra?style=flat&color=e3b341)](https://github.com/Cy-S3c/BurpMCP-Ultra/stargazers)
+[![Stars](https://img.shields.io/github/stars/elmiedo/BurpMCP-Ultra?style=flat&color=e3b341)](https://github.com/elmiedo/BurpMCP-Ultra/stargazers)
 [![Telegram](https://img.shields.io/badge/Telegram-%40D4RK__V0RT3X-2CA5E0?logo=telegram&logoColor=white)](https://t.me/D4RK_V0RT3X)
 
 **151 Tools** &bull; **8 Resources** &bull; **17 Event Types** &bull; Real-time Dashboard &bull; Hardened Localhost Security
@@ -64,14 +64,14 @@ scans, fuzzing, race conditions, OOB testing, custom scan checks, and guided exp
 ### 1. Build
 
 ```bash
-git clone https://github.com/Cy-S3c/BurpMCP-Ultra.git
+git clone https://github.com/elmiedo/BurpMCP-Ultra.git
 cd BurpMCP-Ultra
 ./gradlew shadowJar
 ```
 
-Output: `build/libs/burpmcp-ultra-2.3.1.jar` (~13 MB). A **JDK 17–21** must be installed —
+Output: `build/libs/burpmcp-ultra-2.4.0.jar` (~13 MB). A **JDK 17–21** must be installed —
 see [Building from Source](#building-from-source). Pre-built JARs are on the
-[Releases](https://github.com/Cy-S3c/BurpMCP-Ultra/releases) page.
+[Releases](https://github.com/elmiedo/BurpMCP-Ultra/releases) page.
 
 ### 2. Load into Burp
 
@@ -569,22 +569,22 @@ The Gradle wrapper is committed, so no separate Gradle install is needed.
 
 **Linux / macOS**
 ```bash
-git clone https://github.com/Cy-S3c/BurpMCP-Ultra.git
+git clone https://github.com/elmiedo/BurpMCP-Ultra.git
 cd BurpMCP-Ultra
 # Gradle auto-selects an installed JDK 17 for the build daemon, so this works even if your
 # default `java` is Burp's Java 25. If no JDK 17 is discoverable, install one (or set JAVA_HOME).
 ./gradlew shadowJar
-# Output: build/libs/burpmcp-ultra-2.3.1.jar
+# Output: build/libs/burpmcp-ultra-2.4.0.jar
 ```
 
 **Windows (PowerShell / cmd)**
 ```bat
-git clone https://github.com/Cy-S3c/BurpMCP-Ultra.git
+git clone https://github.com/elmiedo/BurpMCP-Ultra.git
 cd BurpMCP-Ultra
 :: Gradle auto-selects an installed JDK 17 for the build daemon, so this works even if your
 :: default java is Burp's Java 25. If no JDK 17 is discoverable, install one (or set JAVA_HOME).
 gradlew.bat shadowJar
-:: Output: build\libs\burpmcp-ultra-2.3.1.jar
+:: Output: build\libs\burpmcp-ultra-2.4.0.jar
 ```
 
 > If no JDK 17 is found, Gradle fails with a clear "no compatible daemon JVM" error instead of
@@ -615,8 +615,8 @@ BurpMCP-Ultra/
 
 ## Contact & Support
 
-- 🐛 **Bugs & feature requests:** [GitHub Issues](https://github.com/Cy-S3c/BurpMCP-Ultra/issues)
-- 📦 **Releases & changelog:** [GitHub Releases](https://github.com/Cy-S3c/BurpMCP-Ultra/releases)
+- 🐛 **Bugs & feature requests:** [GitHub Issues](https://github.com/elmiedo/BurpMCP-Ultra/issues)
+- 📦 **Releases & changelog:** [GitHub Releases](https://github.com/elmiedo/BurpMCP-Ultra/releases)
 - 💬 **Quick reach:** Telegram [**@D4RK_V0RT3X**](https://t.me/D4RK_V0RT3X)
 
 ## License

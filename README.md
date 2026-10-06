@@ -12,11 +12,11 @@ part of Burp Suite programmatically through AI agents.
 [![License](https://img.shields.io/badge/license-MIT-3fb950)](#license)
 [![Burp Suite](https://img.shields.io/badge/Burp%20Suite-Professional-ff6633)](https://portswigger.net/burp)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.20-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![MCP tools](https://img.shields.io/badge/MCP%20tools-150-8957e5)](#tools)
+[![MCP tools](https://img.shields.io/badge/MCP%20tools-151-8957e5)](#tools)
 [![Stars](https://img.shields.io/github/stars/Cy-S3c/BurpMCP-Ultra?style=flat&color=e3b341)](https://github.com/Cy-S3c/BurpMCP-Ultra/stargazers)
 [![Telegram](https://img.shields.io/badge/Telegram-%40D4RK__V0RT3X-2CA5E0?logo=telegram&logoColor=white)](https://t.me/D4RK_V0RT3X)
 
-**150 Tools** &bull; **8 Resources** &bull; **17 Event Types** &bull; Real-time Dashboard &bull; Hardened Localhost Security
+**151 Tools** &bull; **8 Resources** &bull; **17 Event Types** &bull; Real-time Dashboard &bull; Hardened Localhost Security
 
 [Quick Start](#quick-start) &bull;
 [Tools](#tools) &bull;
@@ -31,7 +31,7 @@ part of Burp Suite programmatically through AI agents.
 ---
 
 BurpMCP-Ultra is a native **Kotlin** Burp Suite extension with an embedded **MCP (Model
-Context Protocol)** server. It exposes Burp's Montoya API as 150 structured tools over a
+Context Protocol)** server. It exposes Burp's Montoya API as 151 structured tools over a
 token-secured local SSE transport, so an AI agent can run proxy history analysis, active
 scans, fuzzing, race conditions, OOB testing, custom scan checks, and guided exploitation
 — all from natural language.
@@ -40,7 +40,7 @@ scans, fuzzing, race conditions, OOB testing, custom scan checks, and guided exp
 
 | | BurpMCP-Ultra | burp-ai-agent | PortSwigger Official |
 |---|:---:|:---:|:---:|
-| **MCP Tools** | **150** | 53 | 12 |
+| **MCP Tools** | **151** | 53 | 12 |
 | **Custom Scan Checks** | BCheck + Script | – | – |
 | **Guided Injection Probe** | SQLi / SSTI / LFI oracles | – | – |
 | **JWT Attacks** | alg:none, RS→HS, crack | – | – |
@@ -123,14 +123,15 @@ Browse to **http://127.0.0.1:9878** for the real-time web dashboard.
 
 ## Tools
 
-**150 MCP tools** across 37 categories. Names are stable; the authoritative count is
+**151 MCP tools** across 37 categories. Names are stable; the authoritative count is
 `server.tools.size`, surfaced in the Server tab.
 
-### Proxy (13)
+### Proxy (14)
 | Tool | Description |
 |------|-------------|
-| `proxy_history` | Get HTTP proxy history with filtering (host, method, status, MIME, scope) |
+| `proxy_history` | Get HTTP proxy history with filtering (host, method, status, MIME, scope) and `order=latest` newest-first mode |
 | `proxy_history_search` | Regex search across proxy history (URL, headers, body) |
+| `proxy_traffic_stats` | Aggregate triage stats: method/status/MIME distributions, top hosts & endpoints, slowest and largest responses |
 | `proxy_websocket_history` | Get WebSocket proxy history |
 | `proxy_websocket_history_search` | Regex search WebSocket history |
 | `proxy_intercept_enable` / `proxy_intercept_disable` / `proxy_intercept_status` | Control & inspect interception |
@@ -183,7 +184,7 @@ Browse to **http://127.0.0.1:9878** for the real-time web dashboard.
 |------|-------------|
 | `intruder_send` / `intruder_send_with_positions` | Send to Intruder (auto or explicit positions) |
 | `intruder_register_payload_processor` | Register a custom payload processor |
-| `repeater_send` | Send a request to a Repeater tab |
+| `repeater_send` | Send request to a Repeater tab (HTTP/1.1, or native HTTP/2 via `http2=true`) |
 
 ### WebSocket (7)
 | Tool | Description |
@@ -523,7 +524,7 @@ Builds the JAR, optionally configures Caddy, and prints the MCP config to add.
 |  |                                             |  |
 |  |  Montoya API --> Bridge Layer (32 bridges)  |  |
 |  |       |                |                    |  |
-|  |  Event Bus    Tool Registry (150 tools)     |  |
+|  |  Event Bus    Tool Registry (151 tools)     |  |
 |  |       |                |                    |  |
 |  |       +------- MCP Server Core -------+     |  |
 |  |               (Kotlin SDK 0.8.3)      |     |  |
@@ -600,7 +601,7 @@ BurpMCP-Ultra/
 ├── src/main/kotlin/com/burpmcp/ultra/
 │   ├── core/                     # Extension entry point + helpers
 │   ├── bridge/                   # 32 Montoya API bridges
-│   ├── tools/                    # 37 tool category modules (150 tools)
+│   ├── tools/                    # 37 tool category modules (151 tools)
 │   ├── safety/                   # Scope gate, action policy, ReDoS-safe regex
 │   ├── transport/                # MCP server + dashboard + security
 │   ├── events/                   # Unified event bus

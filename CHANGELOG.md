@@ -4,6 +4,27 @@ All notable changes to BurpMCP-Ultra are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/) (see `docs/ROADMAP.md` for the semver convention).
 
+## [2.4.0] — 2026-10-06 — Traffic triage, newest-first history, HTTP/2 Repeater
+
+Theme: quality-of-life for agent-driven triage, ported from a cross-implementation
+review of the other Burp MCP servers (dinosn fork, Burp-MCP-Unrestricted, X3r0K).
+
+### Added
+- **`proxy_traffic_stats`** (new tool, 151 total). One-call aggregate over proxy history:
+  totals, method / status-class / MIME distributions, top hosts and top endpoints
+  (method + path), slowest requests (from `TimingData`, where Burp recorded it) and
+  largest responses. The "what just happened / where to dig first" call.
+- **`proxy_history` `order=latest`** — newest-first mode so `start_index: 0` is the most
+  recent item; no more paging to the end of history to watch fresh traffic (the
+  `get_proxy_http_history_latest` idea from Burp-MCP-Unrestricted, folded into the
+  existing tool as a parameter instead of a separate one).
+- **`repeater_send` `http2=true`** — creates a native HTTP/2 Repeater tab
+  (`create_repeater_tab_http2` from Burp-MCP-Unrestricted, folded in). Pseudo-headers
+  are derived from the target and the parsed request; hop-by-hop / illegal-in-h2
+  headers (`Connection`, `Transfer-Encoding`, `Upgrade`, `Host`, `Keep-Alive`,
+  `Proxy-Connection`, `Content-Length`) are dropped automatically — `:authority`
+  replaces `Host`.
+
 ## [2.3.2] — 2026-09-26 — Credential redaction & CJK-safe fonts
 
 Theme: two community-reported fixes — live credentials no longer enter the agent's context by

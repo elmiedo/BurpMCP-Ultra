@@ -4,6 +4,68 @@ All notable changes to BurpMCP-Ultra are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/) (see `docs/ROADMAP.md` for the semver convention).
 
+## [2.5.0-alpha.1] — 2026-10-07 — Identity Matrix module (design + contract, pre-integration)
+
+Theme: the four-layer identity model for multi-account, anti-correlation agent
+operations — designed, schema-frozen, and verified, but NOT yet wired into the
+extension's MCP tools. The Kotlin jar is unchanged from 2.4.0; this alpha ships
+the data model and the runtime contract that 2.5.0 will consume.
+
+### Added
+- **`identity/` module** — the Identity Matrix:
+  - **Layer 1 · credential** — immutable typed secret material (basic, bearer,
+    api-key, oauth2, jwt, session-cookie, signed-cookie, tls-client-cert,
+    hmac-signature, digest, totp-seed). `application.inject` ∈ header|cookie|query|
+    tls|signer describes how ANY type is placed into a request, so the agent applies
+    every credential uniformly. Secrets live only behind `vault://` refs — plaintext
+    in a record is schema-rejected. `scope.hosts` uses suffix-match with a dot
+    boundary (`*.acme.example` matches a.acme.example / x.y.acme.example, NOT the
+    bare apex, NOT notacme.example). Lifecycle carries fail_count → auto-quarantine.
+  - **Layer 2 · identity** — the persona: a credential bundle by reference plus a
+    coherent presentation (egress, locale, JA3/JA4). Everything a server can
+    correlate — cookies AND tokens AND IP AND headers — rotates together, atomically.
+  - **Layer 3 · binding** — the agent×identity matrix: dedicated bindings or shared
+    pools (sticky/round_robin/lru/weighted/random) with leases, TTL and
+    max_concurrent back-pressure; stateless_fanout for lease-free parallel fan-out
+    (guarded: never with stateful credentials — see invariants).
+  - **Layer 4 · session** — mutable runtime state (cookie jar, live tokens, CSRF,
+    bound egress, timing clocks). Never written back into the credential: seed
+    immutable, session mutable.
+  - **Renewal policies** — reusable or inline, with the two expiry clocks kept
+    strictly separate: keepalive attacks the server's IDLE (sliding) timeout,
+    refresh/reauth attack the ABSOLUTE expiry. The keepalive loop is owned by the
+    session manager, not the agent, so it outlives leases and task gaps. Unknown
+    idle timeouts are self-calibrated from observed session deaths
+    (source: observed).
+- **Hybrid execution contract** (the Burp integration boundary, machine-checked):
+  Montoya has NO per-request upstream proxy — the Burp upstream is global. So
+  bindings declare `execution`:
+  - `parallel` (default) — active requests run through the identity-layer HTTP
+    client (httpx+socks), honoring per-identity egress, N identities concurrent;
+  - `burp-native` — Scanner/Intruder/Repeater run via the global upstream under an
+    exclusive egress lock: exactly one identity/egress active at a time, others
+    queue FIFO; the lock flips the global upstream on grant.
+- **`identity/validate_registry.py`** — schema pass (draft 2020-12, format-assertive
+  with soft fallback) + referential integrity (id uniqueness, cross-record xrefs,
+  precedence ⊆ credentials) + the invariants the schema cannot express:
+  burp-native+max_concurrent>1 is meaningless (rejected), burp-native+
+  stateless_fanout is contradictory (rejected), stateless_fanout must not reference
+  stateful credentials (bearer/jwt count as stateful iff inject==cookie),
+  sticky needs affinity_key. Exit codes 0/1/2 for CI/pre-commit.
+- **`identity/session_manager.py`** — the live cycle: minting, keepalive vs refresh,
+  idle self-calibration, idempotent lease checkout with back-pressure, EgressLock.
+  Deterministic VirtualClock demos A–F prove the claims in milliseconds (no-keepalive
+  churn=2 vs keepalive churn=0 on identical workload; calibration converges and
+  deaths stop; scope-gate denies off-host injection). Single-threaded by design —
+  CONCURRENCY notes mark what needs a real mutex under parallel MCP calls.
+
+### Notes
+- All artifacts verified independently: 5 schema negatives + 5 integrity negatives
+  rejected with precise messages; demos reproduced as documented.
+- Next (2.5.0 proper): MCP tools `identity_list/status/import`, `identity` parameter
+  on http_send_request/http_fuzz/idor_hunt/access_control_sweep, manager-side
+  httpx+socks client and EgressLock wiring to config_upstream_proxy_set.
+
 ## [2.4.0] — 2026-10-06 — Traffic triage, newest-first history, HTTP/2 Repeater
 
 Theme: quality-of-life for agent-driven triage, ported from a cross-implementation

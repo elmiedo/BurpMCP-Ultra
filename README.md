@@ -121,6 +121,39 @@ Browse to **http://127.0.0.1:9878** for the real-time web dashboard.
 
 ---
 
+## Identity Matrix (2.5.0-alpha.1)
+
+Multi-account, anti-correlation operations need every server-correlatable signal —
+cookies, tokens, IP, headers, fingerprints — to rotate **together**. The
+[`identity/`](identity/) module defines the four-layer model:
+
+| Layer | What it is | Mutability |
+|---|---|---|
+| **credential** | typed secret material (oauth2 / jwt / session-cookie / hmac-signature / mTLS / …) + scope + injection + lifecycle | immutable seed |
+| **identity** | persona: credential bundle (by reference) + presentation (egress, locale, JA3/JA4) | stable |
+| **binding** | agent×identity matrix: dedicated or pooled (sticky/round-robin, leases, back-pressure) | policy |
+| **session** | live state: cookie jar, tokens, CSRF, timing clocks, bound egress | mutable, never written back |
+
+Key properties: secrets only via `vault://` refs (plaintext is schema-rejected);
+idle (sliding) and absolute expiry are **different clocks** — keepalive attacks
+one, refresh/reauth the other; unknown idle timeouts self-calibrate from observed
+deaths; scope-gated injection refuses to place a live token on an off-scope host.
+
+**Execution contract** (machine-checked): Montoya's upstream proxy is global, so
+per-identity egress inside Burp is impossible for parallel active traffic.
+Bindings therefore declare `execution: parallel` (manager's own httpx+socks
+client, N identities concurrent, per-identity egress) or `execution: burp-native`
+(Burp Scanner/Intruder/Repeater via the global upstream under an exclusive egress
+lock — one identity at a time). Contradictory combinations
+(burp-native + max_concurrent>1, burp-native + stateless_fanout) are rejected by
+the validator.
+
+Artifacts: [`identity-matrix.schema.json`](identity/identity-matrix.schema.json)
+(draft 2020-12, format-assertive) · [`validate_registry.py`](identity/validate_registry.py)
+(schema + integrity gate, CI-ready) · [`session_manager.py`](identity/session_manager.py)
+(live cycle + deterministic demos A–F) · [module README](identity/README.md).
+MCP-tool integration (`identity` parameter on http tools) lands in 2.5.0.
+
 ## Tools
 
 **151 MCP tools** across 37 categories. Names are stable; the authoritative count is
@@ -607,6 +640,7 @@ BurpMCP-Ultra/
 │   ├── events/                   # Unified event bus
 │   ├── state/                    # State management
 │   └── ui/                       # Swing UI tab
+├── identity/                     # Identity Matrix module (2.5.0-alpha.1): schema, validator, session manager
 ├── src/test/                     # 105 unit tests
 └── docs/                         # Tool catalog + capability review
 ```

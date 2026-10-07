@@ -549,25 +549,15 @@ Builds the JAR, optionally configures Caddy, and prints the MCP config to add.
 
 ## Architecture
 
-```
-+---------------------------------------------------+
-|                BURP SUITE PRO                      |
-|  +---------------------------------------------+  |
-|  |        BurpMCP-Ultra Extension              |  |
-|  |                                             |  |
-|  |  Montoya API --> Bridge Layer (32 bridges)  |  |
-|  |       |                |                    |  |
-|  |  Event Bus    Tool Registry (154 tools)     |  |
-|  |       |                |                    |  |
-|  |       +------- MCP Server Core -------+     |  |
-|  |               (Kotlin SDK 0.8.3)      |     |  |
-|  |                    |                  |     |  |
-|  |         +----------+----------+       |     |  |
-|  |     SSE :9876  SSE :9877  Dashboard   |     |  |
-|  |                            :9878      |     |  |
-|  +---------------------------------------------+  |
-+---------------------------------------------------+
-```
+![BurpMCP-Ultra architecture](docs/architecture.png)
+
+Reading order — top to bottom, left to right: the MCP client talks JSON-RPC over
+SSE to the extension's transport; the `ToolRegistry` fans tool calls out to the
+bridge layer, which drives Burp's Montoya API (Proxy, Scanner, Intruder,
+Repeater, Collaborator). The Identity Matrix (right) resolves imported
+identities and applies credentials atomically to outgoing requests; the manager
+side (bottom right) resolves vault secrets and serializes egress grants to
+Burp's global upstream. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
 
 ## Tech Stack
 

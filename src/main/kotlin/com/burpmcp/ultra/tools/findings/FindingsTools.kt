@@ -2,6 +2,7 @@ package com.burpmcp.ultra.tools.findings
 
 import com.burpmcp.ultra.bridge.FindingsBridge
 import com.burpmcp.ultra.bridge.Owasp2021
+import com.burpmcp.ultra.core.ArgumentAliases
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -27,7 +28,7 @@ object FindingsTools {
                     putJsonObject("severity") { put("type", "string"); put("description", "critical|high|medium|low|info (default info)") }
                     putJsonObject("url") { put("type", "string"); put("description", "Affected URL") }
                     putJsonObject("location") { put("type", "string"); put("description", "Where it lives: param:name, header:name, body, path") }
-                    putJsonObject("detail") { put("type", "string"); put("description", "Description of the issue") }
+                    putJsonObject("detail") { put("type", "string"); put("description", "Description of the issue. Aliases accepted: description, summary, title") }
                     putJsonObject("evidence") { put("type", "string"); put("description", "Evidence (payload, response excerpt)") }
                     putJsonObject("cvss_score") { put("type", "string"); put("description", "CVSS base score, 0.0-10.0 (e.g. 8.1). Optional.") }
                     putJsonObject("cvss_vector") { put("type", "string"); put("description", "CVSS vector string (e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H). Optional.") }
@@ -44,23 +45,30 @@ object FindingsTools {
         ) { request ->
             try {
                 val a = request.params.arguments ?: emptyMap()
-                val type = a["type"]?.jsonPrimitive?.contentOrNull ?: return@addTool err("Parameter 'type' is required")
-                val url = a["url"]?.jsonPrimitive?.contentOrNull ?: return@addTool err("Parameter 'url' is required")
+                val resolved = ArgumentAliases.resolveFindingArgs(a)
+                val type = resolved["type"]?.takeIf { it.isNotBlank() } ?: return@addTool err("Parameter 'type' is required")
+                val url = resolved["url"]?.takeIf { it.isNotBlank() } ?: return@addTool err("Parameter 'url' is required")
                 val result = bridge.add(
                     type,
-                    a["severity"]?.jsonPrimitive?.contentOrNull ?: "info",
+                    resolved["severity"] ?: "info",
                     url,
-                    a["location"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["detail"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["evidence"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["cvss_score"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["cvss_vector"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["owasp_category"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["steps_to_reproduce"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["request"]?.jsonPrimitive?.contentOrNull ?: "",
-                    a["response"]?.jsonPrimitive?.contentOrNull ?: ""
+                    resolved["location"] ?: "",
+                    resolved["detail"] ?: "",
+                    resolved["evidence"] ?: "",
+                    resolved["cvss_score"] ?: "",
+                    resolved["cvss_vector"] ?: "",
+                    resolved["owasp_category"] ?: "",
+                    resolved["steps_to_reproduce"] ?: "",
+                    resolved["request"] ?: "",
+                    resolved["response"] ?: ""
                 )
-                CallToolResult(content = listOf(TextContent(result.toString())))
+                // Surface alias usage so natural field names (title/description) are
+                // never consumed silently.
+                val resultWithAliases = if (ArgumentAliases.applied(a).isEmpty()) result else buildJsonObject {
+                    result.forEach { (k, v) -> put(k, v) }
+                    put("aliases_applied", JsonArray(ArgumentAliases.applied(a).map { JsonPrimitive(it) }))
+                }
+                CallToolResult(content = listOf(TextContent(resultWithAliases.toString())))
             } catch (e: Exception) {
                 err(e.message ?: "Unknown error")
             }

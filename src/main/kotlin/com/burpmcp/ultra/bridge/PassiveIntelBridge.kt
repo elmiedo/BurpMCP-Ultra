@@ -3,6 +3,32 @@ package com.burpmcp.ultra.bridge
 import burp.api.montoya.MontoyaApi
 import kotlinx.serialization.json.*
 
+/**
+ * Content types treated as body-scannable. Every other body (images, fonts,
+ * media, archives, binaries) is skipped: matching text patterns against binary
+ * payloads only produced garbage matches (e.g. `pg_` inside a webp). Response
+ * HEADERS are always scanned — that's where server/php version fingerprints live.
+ */
+private val textBodyMarkers = listOf(
+    "text/", "application/json", "application/javascript", "application/x-javascript",
+    "application/xml", "application/xhtml", "application/x-www-form-urlencoded",
+    "application/yaml", "application/graphql", "application/vnd.api+json",
+    "application/soap", "application/atom", "application/rss", "+json", "+xml"
+)
+
+internal fun isTextBody(contentType: String): Boolean {
+    val ct = contentType.substringBefore(';').trim().lowercase()
+    if (ct.isEmpty()) return true // unknown → scan; a blank body carries no FP risk
+    return textBodyMarkers.any { ct.startsWith(it) || ct.contains(it) }
+}
+
+/** Splits a serialized HTTP message into its header block (inclusive) and body. */
+internal fun splitHeaders(message: String): Pair<String, String> {
+    val idx = message.indexOf("\r\n\r\n")
+    return if (idx >= 0) message.substring(0, idx + 4) to message.substring(idx + 4)
+    else message.substringBefore("\n\n") to ""
+}
+
 class PassiveIntelBridge(private val api: MontoyaApi) {
 
     // Pre-compiled regex patterns for sensitive data
@@ -109,6 +135,7 @@ class PassiveIntelBridge(private val api: MontoyaApi) {
             // Scan
             val findings = mutableMapOf<String, MutableList<JsonObject>>()
             var itemsScanned = 0
+            var binaryBodiesSkipped = 0
 
             for (item in items) {
                 itemsScanned++
@@ -117,10 +144,19 @@ class PassiveIntelBridge(private val api: MontoyaApi) {
 
                 // Scan request
                 val requestText = try { item.finalRequest().toString() } catch (_: Exception) { "" }
-                // Scan response
+                // Scan response: headers always, body only for text-like content types
+                var textBody = true
                 val responseText = try {
-                    if (item.hasResponse()) item.originalResponse().toString() else ""
+                    if (item.hasResponse()) {
+                        val full = item.originalResponse().toString()
+                        val contentType = try {
+                            item.originalResponse().headerValue("Content-Type") ?: ""
+                        } catch (_: Exception) { "" }
+                        textBody = isTextBody(contentType)
+                        if (textBody) full else splitHeaders(full).first
+                    } else ""
                 } catch (_: Exception) { "" }
+                if (!textBody) binaryBodiesSkipped++
 
                 for ((patternName, regex) in activePatterns) {
                     try {
@@ -157,6 +193,7 @@ class PassiveIntelBridge(private val api: MontoyaApi) {
 
             buildJsonObject {
                 put("items_scanned", itemsScanned)
+                put("binary_bodies_skipped", binaryBodiesSkipped)
                 put("total_findings", dedupedFindings.values.sumOf { it.size })
                 put("categories_with_findings", dedupedFindings.size)
 

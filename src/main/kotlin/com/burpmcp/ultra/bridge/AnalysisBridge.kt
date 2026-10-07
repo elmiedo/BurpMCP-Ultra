@@ -547,12 +547,21 @@ class AnalysisBridge(private val api: MontoyaApi) {
                 val levelName = level["name"]?.jsonPrimitive?.contentOrNull ?: "unknown"
                 val headerName = level["header_name"]?.jsonPrimitive?.contentOrNull
                 val headerValue = level["header_value"]?.jsonPrimitive?.contentOrNull
+                val registryId = level["registry_id"]?.jsonPrimitive?.contentOrNull
 
                 try {
                     // Build request with this auth level
                     var httpRequest = HttpRequest.httpRequest(service, baseRequest)
 
-                    if (headerName != null && headerValue != null) {
+                    if (registryId != null) {
+                        // Identity Matrix identity: atomic application, replaces auth layers
+                        val outcome = IdentityApplier.apply(httpRequest, registryId)
+                        if (outcome.error != null) {
+                            errors.add("Level '$levelName' identity '$registryId' not applied: ${outcome.error}")
+                            continue
+                        }
+                        httpRequest = outcome.request
+                    } else if (headerName != null && headerValue != null) {
                         // Remove existing auth header and add new one
                         httpRequest = httpRequest.withRemovedHeader(headerName).withHeader(headerName, headerValue)
                     } else if (levelName.equals("none", ignoreCase = true) || levelName.equals("unauth", ignoreCase = true)) {

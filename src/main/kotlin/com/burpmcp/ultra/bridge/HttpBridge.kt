@@ -97,14 +97,22 @@ class HttpBridge(
         maxBodyLength: Int? = null,
         timeoutMs: Long? = null,
         preserveHeaders: Boolean = true,
-        autoFixContentLength: Boolean = true
+        autoFixContentLength: Boolean = true,
+        identity: String? = null
     ): JsonObject {
         return try {
-            val httpRequest = buildRequest(
+            val built = buildRequest(
                 url, method, headers, body, rawRequest, host, port, useTls,
                 preserveHeaders = preserveHeaders,
                 autoFixContentLength = autoFixContentLength
             )
+            // Identity application is atomic: on any resolution error the request
+            // is NOT sent rather than sent half-authenticated.
+            val appliedIdentity = IdentityApplier.apply(built, identity)
+            if (appliedIdentity.error != null) return buildJsonObject {
+                put("error", "identity '$identity' not applied, request NOT sent: ${appliedIdentity.error}")
+            }
+            val httpRequest = appliedIdentity.request
             val mode = resolveHttpMode(httpMode)
 
             val targetUrl = try { httpRequest.url() } catch (_: Exception) { url ?: "" }
@@ -125,7 +133,11 @@ class HttpBridge(
             ToolCallTracker.lastSentResult.set(result)
 
             val hygiene = RequestHygiene.scan(method, url, headers)
-            withScopeWarning(withRequestWarnings(serializeRequestResponse(result, elapsedMs, maxBodyLength), hygiene), scope.warning)
+            val base = withScopeWarning(withRequestWarnings(serializeRequestResponse(result, elapsedMs, maxBodyLength), hygiene), scope.warning)
+            if (appliedIdentity.applied.isEmpty()) base else buildJsonObject {
+                base.forEach { (k, v) -> put(k, v) }
+                put("identity_applied", JsonArray(appliedIdentity.applied.map { JsonPrimitive(it) }))
+            }
         } catch (e: Exception) {
             buildJsonObject {
                 put("error", "Failed to send request: ${e.message}")
@@ -1215,7 +1227,8 @@ class HttpBridge(
         payloads: List<String>,
         httpMode: String?,
         maxBodyLength: Int?,
-        marker: String?
+        marker: String?,
+        identity: String? = null
     ): JsonObject {
         return try {
             val service = HttpService.httpService(host, port, useTls)
@@ -1237,12 +1250,22 @@ class HttpBridge(
                 is HttpFuzzPlan.Result.Ok -> p
             }
 
+            // Resolve the identity ONCE up front so a bad/secretless identity aborts
+            // the whole run instead of firing half the payloads unauthenticated.
+            if (identity != null) {
+                val probe = IdentityApplier.apply(HttpRequest.httpRequest(service, baseRequest), identity)
+                if (probe.error != null) return buildJsonObject {
+                    put("error", "identity '$identity' not applied, nothing sent: ${probe.error}")
+                }
+            }
+
             for (planned in plan.requests) {
                 // Encode the substituted request with an EXPLICIT UTF-8 charset so astral /
                 // multi-byte payloads (emoji, non-Latin scripts) survive intact. Handing the
                 // String straight to Montoya's String overload previously corrupted them.
                 val reqBytes = planned.request.toByteArray(Charsets.UTF_8)
-                val httpRequest = HttpRequest.httpRequest(service, BurpByteArray.byteArray(*reqBytes))
+                val appliedIdentity = IdentityApplier.apply(HttpRequest.httpRequest(service, BurpByteArray.byteArray(*reqBytes)), identity)
+                val httpRequest = appliedIdentity.request
                 val startTime = System.nanoTime()
                 val result = api.http().sendRequest(httpRequest, mode)
                 val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
@@ -1259,6 +1282,7 @@ class HttpBridge(
                 put("total_requests", results.size)
                 put("payloads_count", payloads.size)
                 put("mode", plan.mode)
+                if (identity != null) put("identity", identity)
                 put("results", buildJsonArray { results.forEach { add(it) } })
             }
         } catch (e: Exception) {

@@ -34,6 +34,7 @@ import com.burpmcp.ultra.tools.apiimport.ApiImportTools
 import com.burpmcp.ultra.tools.passiveintel.PassiveIntelTools
 import com.burpmcp.ultra.tools.jwt.JwtTools
 import com.burpmcp.ultra.tools.findings.FindingsTools
+import com.burpmcp.ultra.tools.identity.IdentityTools
 import com.burpmcp.ultra.tools.recon.ReconTools
 import com.burpmcp.ultra.tools.graphql.GraphQlTools
 import com.burpmcp.ultra.tools.webprobe.WebProbeTools
@@ -157,6 +158,10 @@ object ToolRegistry {
 
         // Findings store: the agent's deduplicated working memory of issues (add/list)
         FindingsTools.register(server, bridges.findings)
+
+        // Identity Matrix (2.5.0): registry import/list/status; request-side
+        // application lives on http_send_request/http_fuzz via their `identity` param
+        IdentityTools.register(server)
 
         // Recon: JS endpoint harvest, content discovery, param mining (scope-gated)
         ReconTools.register(server, bridges.recon)

@@ -15,7 +15,7 @@ class BuildInfoTest {
     fun `VERSION is a non-blank semver string`() {
         assertTrue(BuildInfo.VERSION.isNotBlank(), "BuildInfo.VERSION is blank")
         assertTrue(
-            BuildInfo.VERSION.matches(Regex("""\d+\.\d+\.\d+""")),
+            BuildInfo.VERSION.matches(Regex("""\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?""")),
             "BuildInfo.VERSION is not semver: '${BuildInfo.VERSION}'"
         )
     }

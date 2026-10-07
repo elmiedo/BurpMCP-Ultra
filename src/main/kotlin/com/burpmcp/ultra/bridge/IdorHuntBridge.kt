@@ -168,7 +168,13 @@ class IdorHuntBridge(private val api: MontoyaApi) {
             val name = str(identity, "name") ?: "unknown"
             val hn = str(identity, "header_name")
             val hv = str(identity, "header_value")
-            if (hn != null && hv != null) {
+            val registryId = str(identity, "registry_id")
+            if (registryId != null) {
+                // Identity Matrix identity: atomic application, replaces auth layers
+                val outcome = IdentityApplier.apply(req, registryId)
+                if (outcome.error != null) return 0 to "error: identity '$registryId' not applied: ${outcome.error}"
+                req = outcome.request
+            } else if (hn != null && hv != null) {
                 req = req.withRemovedHeader(hn).withHeader(hn, hv)
             } else if (name.equals("none", true) || name.equals("unauth", true) || name.equals("anonymous", true)) {
                 req = req.withRemovedHeader("Authorization").withRemovedHeader("Cookie")

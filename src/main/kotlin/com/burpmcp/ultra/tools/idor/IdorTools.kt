@@ -28,7 +28,7 @@ object IdorTools {
                     putJsonObject("use_tls") { put("type", "boolean"); put("description", "Use HTTPS (default: port==443)") }
                     putJsonObject("identities") {
                         put("type", "array"); putJsonObject("items") { put("type", "object") }
-                        put("description", "[{name, header_name?, header_value?, object_id?, canary?}]; name none/unauth strips auth. object_id = a resource that identity owns; canary = a token only in that identity's own data (enables confirmed-grade verdicts).")
+                        put("description", "[{name, header_name?, header_value?, registry_id?, object_id?, canary?}]; name none/unauth strips auth; registry_id = an imported Identity Matrix identity id (identity_import), applied atomically. object_id = a resource that identity owns; canary = a token only in that identity's own data (enables confirmed-grade verdicts).")
                     }
                     putJsonObject("id_value") { put("type", "string"); put("description", "Optional: the object-id value in 'request' to swap (else auto-detected)") }
                     putJsonObject("id_location") { put("type", "string"); put("description", "Optional: where the id is — path/query/header/cookie/body-json/body-form") }

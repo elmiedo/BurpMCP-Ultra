@@ -4,6 +4,36 @@ All notable changes to BurpMCP-Ultra are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/) (see `docs/ROADMAP.md` for the semver convention).
 
+## [2.5.0-alpha.2] — 2026-10-07 — Identity MCP surface + triage fixes
+
+First jar release where the Identity Matrix is callable from MCP. Also carries
+the two 2.4.1 triage fixes.
+
+### Added
+- **`identity_import`** — install an Identity Matrix registry (inline JSON or file),
+  with structural + cross-layer referential validation; on failure the previous
+  registry is kept. Accepts an optional `secrets` map (credential id → resolved
+  value) — the manager owns vault resolution, Burp never reads `vault://` itself.
+- **`identity_list` / `identity_status`** — registry overview per identity
+  (injection surface, secret readiness, binding mode, session states) and deep
+  status with session timing.
+- **`identity` parameter on `http_send_request` / `http_fuzz`** — applies the
+  identity's cookies/headers/bearer ATOMICALLY: layers are replaced, never merged;
+  any resolution error aborts the send (nothing goes out half-authenticated;
+  fuzz resolves the identity once before the first payload fires).
+- **`registry_id` on `idor_hunt` / `access_control_sweep` / `auth_diff` identity
+  entries** — same atomic application per replayed request.
+
+### Fixed
+- **`findings_add` silently dropped natural field names** (`title`, `description`,
+  …): accepted but never read, so `detail` stayed empty unless the exact name was
+  guessed. Aliases now resolve to canonical fields and the result echoes
+  `aliases_applied` so consumption is never silent again.
+- **`passive_intel` scanned binary bodies**: pattern-matching webp/png/woff2
+  produced garbage matches (e.g. `pg_` inside a webp, `Trace` in minified JS).
+  Non-text response bodies are skipped; response headers stay in scope (version
+  fingerprints live there). Result reports `binary_bodies_skipped`.
+
 ## [2.5.0-alpha.1] — 2026-10-07 — Identity Matrix module (design + contract, pre-integration)
 
 Theme: the four-layer identity model for multi-account, anti-correlation agent

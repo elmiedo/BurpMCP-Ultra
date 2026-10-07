@@ -54,6 +54,7 @@ Parameters:
 - timeout_ms (number): hard timeout. Returns is_timeout=true on expiry.
 - preserve_headers (bool, default true): when false, falls back to Burp's httpRequestFromUrl which adds default headers
 - auto_fix_content_length (bool, default true): when false, uses raw_request CL as-is
+- identity (string): identity id from the imported Identity Matrix registry (identity_import). Applies its cookies/headers/bearer ATOMICALLY — replaces matching layers, never merges; on any resolution error the request is NOT sent.
 
 Returns full response with headers, body, status code, and timing.""",
             inputSchema = ToolSchema(
@@ -72,6 +73,7 @@ Returns full response with headers, body, status code, and timing.""",
                     putJsonObject("timeout_ms") { put("type", "number"); put("description", "Hard timeout in milliseconds") }
                     putJsonObject("preserve_headers") { put("type", "boolean"); put("description", "Preserve caller headers byte-exact (default true)") }
                     putJsonObject("auto_fix_content_length") { put("type", "boolean"); put("description", "Recompute Content-Length to match body (default true)") }
+                    putJsonObject("identity") { put("type", "string"); put("description", "Identity Matrix identity id (see identity_import); applied atomically to every request") }
                 },
                 required = emptyList()
             )
@@ -112,7 +114,8 @@ Returns full response with headers, body, status code, and timing.""",
                 val result = bridge.sendRequest(
                     url, method, headers, body, rawRequest, host, port, useTls,
                     httpMode, connectionId, maxResponseLength,
-                    timeoutMs, preserveHeaders, autoFixContentLength
+                    timeoutMs, preserveHeaders, autoFixContentLength,
+                    args["identity"]?.jsonPrimitive?.contentOrNull
                 )
 
                 // Augment result with header diagnostics if applicable.
@@ -651,6 +654,7 @@ Use \r\n for line endings in the request string. Returns all responses with payl
                     putJsonObject("positions") { put("type", "array"); putJsonObject("items") { put("type", "array") }; put("description", "Optional [start, end] byte offset pairs") }
                     putJsonObject("payloads") { put("type", "array"); putJsonObject("items") { put("type", "string") }; put("description", "Array of payload strings") }
                     putJsonObject("payload_library") { put("type", "string"); put("description", "Built-in payload set merged with 'payloads': xss | sqli | traversal | ssti | cmdi") }
+                    putJsonObject("identity") { put("type", "string"); put("description", "Identity Matrix identity id (see identity_import); applied atomically to every fuzzed request") }
                 },
                 required = listOf("request", "host")
             )
@@ -705,7 +709,7 @@ Use \r\n for line endings in the request string. Returns all responses with payl
                     )
                 }
 
-                val result = bridge.fuzz(reqStr, host, port, useTls, positions, payloads, httpMode, maxResponseLength, marker)
+                val result = bridge.fuzz(reqStr, host, port, useTls, positions, payloads, httpMode, maxResponseLength, marker, args["identity"]?.jsonPrimitive?.contentOrNull)
                 CallToolResult(content = listOf(TextContent(result.toString())))
             } catch (e: Exception) {
                 CallToolResult(

@@ -16,7 +16,7 @@ object AccessControlTools {
             description = "Batch broken-access-control / IDOR test: replays each request under every identity and " +
                 "flags where a lower-privilege or unauthenticated identity gets a response matching a higher-privilege " +
                 "one. Scales auth_diff across many endpoints in one call. Provide 'identities' as " +
-                "[{name, header_name?, header_value?}] — a name of none/unauth strips auth headers. Scope-gated " +
+                "[{name, header_name?, header_value?, registry_id?}] — a name of none/unauth strips auth headers; registry_id = an imported Identity Matrix identity id (identity_import), applied atomically. Scope-gated " +
                 "(mcp_scope_mode).",
             inputSchema = ToolSchema(
                 properties = buildJsonObject {
@@ -26,7 +26,7 @@ object AccessControlTools {
                     }
                     putJsonObject("identities") {
                         put("type", "array"); putJsonObject("items") { put("type", "object") }
-                        put("description", "Identities: each {name, header_name?, header_value?}; name none/unauth strips auth")
+                        put("description", "Identities: each {name, header_name?, header_value?, registry_id?}; name none/unauth strips auth; registry_id = Identity Matrix identity id")
                     }
                 },
                 required = listOf("requests", "identities")

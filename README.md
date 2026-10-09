@@ -18,14 +18,20 @@ part of Burp Suite programmatically through AI agents.
 
 **154 Tools** &bull; **8 Resources** &bull; **17 Event Types** &bull; Real-time Dashboard &bull; Hardened Localhost Security
 
-[Architecture](#architecture) &bull;
-[Tools](#tools) &bull;
-[Quick Start](#quick-start) &bull;
-[Tool Classes](#tool-classes) &bull;
-[Use Cases](#use-cases) &bull;
-[Security](#security-model)
-
 </div>
+
+## Contents
+
+| | |
+|---|---|
+| [Architecture](#architecture) | [Use Cases](#use-cases) |
+| [Why BurpMCP-Ultra?](#why-burpmcp-ultra) | [Security Model](#security-model) |
+| [Tools](#tools) | [Web Dashboard](#web-dashboard) |
+| [Quick Start](#quick-start) | [Setup Guides](#setup-guides) |
+| [Tool Classes](#tool-classes) | [Tech Stack & Requirements](#tech-stack) |
+| [Identity Matrix](#identity-matrix-25-alpha2) | [Build, Structure & Support](#building-from-source) |
+
+Full per-tool reference: **[docs/tools.md](docs/tools.md)**
 
 ---
 

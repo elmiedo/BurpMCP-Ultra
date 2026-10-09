@@ -8,7 +8,7 @@ Drop a single JAR into Burp, connect Claude Code (or any MCP client), and drive 
 part of Burp Suite programmatically through AI agents.
 
 [![Latest release](https://img.shields.io/github/v/release/elmiedo/BurpMCP-Ultra?color=1f6feb&label=release)](https://github.com/elmiedo/BurpMCP-Ultra/releases/latest)
-[![Build](https://github.com/elmiedo/BurpMCP-Ultra/actions/workflows/build.yml/badge.svg)](https://github.com/elmiedo/BurpMCP-Ultra/actions/workflows/build.yml)
+[![Build](https://img.shields.io/github/workflow/status/elmiedo/BurpMCP-Ultra/build/Build)](https://github.com/elmiedo/BurpMCP-Ultra/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/license-MIT-3fb950)](#license)
 [![Burp Suite](https://img.shields.io/badge/Burp%20Suite-Professional-ff6633)](https://portswigger.net/burp)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.1.20-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
@@ -18,13 +18,12 @@ part of Burp Suite programmatically through AI agents.
 
 **154 Tools** &bull; **8 Resources** &bull; **17 Event Types** &bull; Real-time Dashboard &bull; Hardened Localhost Security
 
-[Quick Start](#quick-start) &bull;
+[Architecture](#architecture) &bull;
 [Tools](#tools) &bull;
-[Features](#highlight-features) &bull;
-[Security](#security-model) &bull;
-[Dashboard](#web-dashboard) &bull;
-[Setup Guides](#setup-guides) &bull;
-[Contact](#contact--support)
+[Quick Start](#quick-start) &bull;
+[Tool Classes](#tool-classes) &bull;
+[Use Cases](#use-cases) &bull;
+[Security](#security-model)
 
 </div>
 
@@ -36,28 +35,96 @@ token-secured local SSE transport, so an AI agent can run proxy history analysis
 scans, fuzzing, race conditions, OOB testing, custom scan checks, and guided exploitation
 — all from natural language.
 
+## Architecture
+
+![BurpMCP-Ultra architecture](docs/architecture.png)
+
+Reading order — top to bottom, left to right: the MCP client talks JSON-RPC over
+SSE to the extension's transport; the `ToolRegistry` fans tool calls out to the
+bridge layer, which drives Burp's Montoya API (Proxy, Scanner, Intruder,
+Repeater, Collaborator). The Identity Matrix (right) resolves imported
+identities and applies credentials atomically to outgoing requests; the manager
+side (bottom right) resolves vault secrets and serializes egress grants to
+Burp's global upstream. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
+
 ## Why BurpMCP-Ultra?
 
-| | BurpMCP-Ultra | burp-ai-agent | PortSwigger Official |
+Compared at the level of capability classes, not single tools. Counts are of
+Ultra's tool classes; the same table per tool is in [Tools](#tools).
+
+| Capability class | BurpMCP-Ultra | burp-ai-agent | PortSwigger Official |
 |---|:---:|:---:|:---:|
-| **MCP Tools** | **154** | 53 | 12 |
-| **Custom Scan Checks** | BCheck + Script | – | – |
-| **Guided Injection Probe** | SQLi / SSTI / LFI oracles | – | – |
-| **JWT Attacks** | alg:none, RS→HS, crack | – | – |
-| **Access-Control Sweep** | IDOR / privesc across identities | – | – |
-| **WebSocket Testing** | Full lifecycle | – | – |
-| **Inline Fuzzer** | 3 modes (FUZZ / Marker / Offset) | – | – |
-| **Race Condition Testing** | Single-packet attack | – | – |
-| **API Schema Import** | OpenAPI / Swagger + `$ref` | – | – |
-| **Passive Intel Extraction** | 30+ patterns, entropy de-noised | – | – |
-| **Recon** | JS endpoints, content/param discovery | – | – |
-| **Real-time Dashboard** | Web + Swing | – | – |
-| **Hardened Localhost Security** | Host + Origin + token, scope gate | – | – |
-| **Collaborator OOB** | Full create / poll / correlate | Partial | Partial |
+| **HTTP traffic & request crafting** — structured/raw send, chains, fuzzing, races, raw bytes | 13 tools | partial | partial |
+| **Proxy triage** — history, regex search, traffic stats, intercept, per-item rules | 14 tools | partial | – |
+| **Scanning & crawling** — crawl, audit, tasks, issues, reports, BCheck import | 13 tools | partial | – |
+| **Custom scan checks** — BCheck DSL + scripted passive/active checks | 10 tools | – | – |
+| **Access control & IDOR** — sweep, auth diff, canary-confirmed horizontal hunt | 3 tools | – | – |
+| **Injection & JWT offense** — oracle-confirmed SQLi/SSTI/LFI, alg:none / RS→HS / crack | 2 tools | – | – |
+| **Recon & fingerprinting** — JS endpoints, content discovery, param mining, CORS, WAF | 5 tools | – | – |
+| **Passive intel extraction** — 30+ secret/infra patterns, entropy de-noised, MIME-scoped | 1 tool | – | – |
+| **WebSocket testing** — full lifecycle + intercept rules | 7 tools | – | – |
+| **Collaborator OOB** — create / poll / correlate / restore | 7 tools | partial | partial |
+| **Identity Matrix** — registry import, atomic credential application, per-identity egress | 3 tools + `identity/` module | – | – |
+| **Agent working memory** — deduplicated findings store surviving reloads | 2 tools | – | – |
+| **Events, persistence & platform control** — event bus, storage, config, task engine, handoffs | 41 tools | partial | partial |
+| **Utilities** — encode/decode/hash/compress/random/smart-decode | 12 tools | partial | – |
+| **Real-time web dashboard** | yes | – | – |
+| **Hardened localhost security** — host/origin allowlist, token, scope gate, audit log | yes | partial | partial |
 
-> Competitor counts are indicative, based on each project's public tool list.
+> Competitor marks are indicative, based on each project's public tool list.
 
----
+## Tools
+
+**154 MCP tools across 38 classes.** Names are stable; the authoritative count is
+`server.tools.size`, surfaced in the Server tab. Full per-tool reference (parameters,
+returns, the exact wording the server advertises to the agent): **[docs/tools.md](docs/tools.md)** —
+regenerate it with `python3 scripts/gen_tool_docs.py` after changing tool schemas.
+
+| Class | Tools |
+|---|---|
+| **Proxy** (14) | `proxy_history` `proxy_history_search` `proxy_traffic_stats` `proxy_websocket_history` `proxy_websocket_history_search` `proxy_intercept_enable` `proxy_intercept_disable` `proxy_intercept_status` `proxy_annotate` `proxy_set_request_rule` `proxy_set_response_rule` `proxy_list_rules` `proxy_remove_rule` `proxy_auto_auth` |
+| **HTTP** (13) | `http_send_request` `http_send_requests_parallel` `http_send_request_chain` `http_send_raw_bytes` `http_fuzz` `http_race` `http_cookie_jar_get` `http_cookie_jar_set` `http_analyze_keywords` `http_analyze_variations` `http_set_traffic_rule` `http_list_traffic_rules` `http_remove_traffic_rule` |
+| **Scanner** (13) | `scanner_start_crawl` `scanner_start_audit` `scanner_task_status` `scanner_task_list` `scanner_task_delete` `scanner_task_add_request` `scanner_task_issues` `scanner_get_all_issues` `scanner_generate_report` `scanner_create_issue` `scanner_import_bcheck` `scanner_register_check` `scanner_unregister_check` |
+| **Collaborator** (7) | `collaborator_create_client` `collaborator_restore_client` `collaborator_generate_payload` `collaborator_poll` `collaborator_server_info` `collaborator_get_secret` `collaborator_default_payload` |
+| **Intruder & Repeater** (4) | `intruder_send` `intruder_send_with_positions` `intruder_register_payload_processor` `repeater_send` |
+| **WebSocket** (7) | `websocket_create` `websocket_send_text` `websocket_send_binary` `websocket_close` `websocket_list` `websocket_get_messages` `websocket_set_intercept_rule` |
+| **Analysis** (7) | `analyze_request` `analyze_response` `analyze_find_reflected` `analyze_extract_params` `analyze_insertion_points` `analyze_diff` `analyze_response_body_search` |
+| **Utilities** (12) | `util_url_encode` `util_url_decode` `util_base64_encode` `util_base64_decode` `util_html_encode` `util_hash` `util_compress` `util_decompress` `util_random_string` `util_random_bytes` `util_jwt_decode` `util_decode_smart` |
+| **BCheck** (5) | `bcheck_create` `bcheck_import` `bcheck_templates` `bcheck_list` `bcheck_remove` |
+| **Scan Checks — script** (5) | `scancheck_create_passive` `scancheck_create_active` `scancheck_templates` `scancheck_list` `scancheck_remove` |
+| **Burp Suite** (9) | `burp_version` `burp_export_project_config` `burp_import_project_config` `burp_export_user_config` `burp_import_user_config` `burp_task_engine_state` `burp_task_engine_set` `burp_command_line_args` `burp_shutdown` |
+| **Config** (7) | `config_proxy_listeners_list` `config_proxy_listener_add` `config_proxy_listener_remove` `config_match_replace_add` `config_match_replace_list` `config_match_replace_remove` `config_upstream_proxy_set` |
+| **Events** (5) | `events_get` `events_get_by_type` `events_subscribe` `events_unsubscribe` `events_clear` |
+| **Persistence & Preferences** (6) | `persistence_store` `persistence_get` `persistence_delete` `persistence_list` `preference_store` `preference_get` |
+| **Session Handling** (3) | `session_create_token_rule` `session_list_rules` `session_remove_rule` |
+| **Recon** (3) | `recon_js_endpoints` `recon_content_discovery` `recon_param_mine` |
+| **Identity Matrix** (3) | `identity_import` `identity_list` `identity_status` |
+| **Findings** (2) | `findings_add` `findings_list` |
+| **Burp AI** (2) | `ai_status` `ai_prompt` |
+| **Logging** (2) | `log_message` `log_event` |
+| **Organizer** (2) | `organizer_send` `organizer_get_items` |
+| **Web Probe** (2) | `cors_probe` `recon_fingerprint` |
+| **JWT** (1) | `jwt_attack` |
+| **GraphQL** (1) | `graphql_probe` |
+| **Passive Intel** (1) | `passive_intel` |
+| **Auth Diff** (1) | `auth_diff` |
+| **API Import** (1) | `api_import_openapi` |
+| **Access Control** (1) | `access_control_sweep` |
+| **Injection Probe** (1) | `injection_probe` |
+| **IDOR Hunt** (1) | `idor_hunt` |
+| **Bambda** (1) | `bambda_import` |
+| **Project** (1) | `project_info` |
+| **Extension** (1) | `extension_info` |
+| **Comparer** (1) | `comparer_send` |
+| **Decoder** (1) | `decoder_send` |
+| **Scope** (4) | `scope_check` `scope_include` `scope_exclude` `scope_get_config` |
+| **Sitemap** (4) | `sitemap_query` `sitemap_get_issues` `sitemap_add_request` `sitemap_add_issue` |
+
+**Resources** (8, read-only, no tool call needed): `burp://proxy/history` ·
+`burp://proxy/websocket/history` · `burp://scanner/issues` · `burp://sitemap` ·
+`burp://scope` · `burp://config/project` · `burp://config/user` · `burp://organizer/items`
+
+> Offensive tools that issue live requests are **scope-gated** (see [Security Model](#security-model)).
 
 ## Quick Start
 
@@ -119,7 +186,32 @@ Add to `~/.claude.json` or your project's `.mcp.json`.
 
 Browse to **http://127.0.0.1:9878** for the real-time web dashboard.
 
----
+## Tool Classes
+
+What you hand each class and what comes back, one line per class. Full parameter-level
+detail lives in [docs/tools.md](docs/tools.md); worked examples for the agent in
+[Use Cases](#use-cases).
+
+- **Proxy** — give filters (host/method/status/MIME/scope), get filtered history rows, aggregate triage stats, or set intercept/rules. [`docs`](docs/tools.md#proxy)
+- **HTTP** — give a structured or raw request, get the full response with timing; give a `FUZZ`-marked request + payloads, get all fuzz responses; give N identical requests, get race analysis. `http_send_request`/`http_fuzz` accept an `identity` for atomic auth application. [`docs`](docs/tools.md#http)
+- **Scanner** — give seed URLs or a request + audit config, get task ids; poll status, collect issues, generate reports. [`docs`](docs/tools.md#scanner)
+- **Collaborator** — get a client + payloads, later poll DNS/HTTP/SMTP interactions; restore a client from its secret across sessions. [`docs`](docs/tools.md#collaborator)
+- **Intruder & Repeater** — give a request, get an Intruder attack or a Repeater tab (native HTTP/2 via `http2=true`). [`docs`](docs/tools.md#intruder)
+- **WebSocket** — give a URL, get a live connection id; send text/binary frames, read filtered history, set intercept rules. [`docs`](docs/tools.md#websocket)
+- **Analysis** — give a raw message or two, get parsed structure, extracted params, insertion points, reflection surface, diffs, or a body search across history. [`docs`](docs/tools.md#analysis)
+- **Utilities** — give a value, get it encoded/decoded/hashed/compressed/randomized; `util_decode_smart` peels multi-layer encodings. [`docs`](docs/tools.md#utilities)
+- **BCheck / Scan Checks** — give a pattern or a multi-step payload chain, get a deployed custom scan check (passive or active) running inside Burp's scanner. [`docs`](docs/tools.md#bcheck)
+- **Burp Suite / Config** — get version, configs, task-engine state, command line; set listeners, match-replace rules, upstream proxy (used by the Identity egress contract). [`docs`](docs/tools.md#burp-suite)
+- **Events** — subscribe to 17 event types; give filters, get the event log. Powers the dashboard and agent push notifications. [`docs`](docs/tools.md#events)
+- **Persistence & Preferences** — key-value storage in project scope or global preferences; survives reloads. [`docs`](docs/tools.md#persistence--preferences)
+- **Session Handling** — give an extract+inject rule, get automatic session token rotation on matched requests. [`docs`](docs/tools.md#session-handling)
+- **Recon / Web Probe** — give a host, get JS-harvested endpoints, discovered paths, mined params, CORS misconfigs, tech/WAF fingerprints. [`docs`](docs/tools.md#recon)
+- **Identity Matrix** — give a registry (+ secrets from the manager), get validated identities; pass `identity=` to HTTP tools or `registry_id=` to AC tools for atomic, layer-replacing auth. [`docs`](docs/tools.md#identity-matrix)
+- **Findings** — give type+url (+detail/evidence/CVSS/steps), get a deduplicated finding id; list with filters. The agent's working memory for reporting. [`docs`](docs/tools.md#findings)
+- **Offense: Injection / JWT / GraphQL / IDOR / Auth Diff / Access Control** — give a request + target info, get confirmed verdicts (oracle-checked SQLi/SSTI/LFI, JWT forgeries, GraphQL introspection, canary-confirmed cross-user reads, privesc flags). [`docs`](docs/tools.md#injection-probe)
+- **Passive Intel** — give nothing (optional filters), get secrets/tokens/internal IPs/leaks found across captured traffic, entropy- and MIME-de-noised. [`docs`](docs/tools.md#passive-intel)
+- **API Import** — give an OpenAPI/Swagger spec, get generated (optionally sent) requests and a populated sitemap. [`docs`](docs/tools.md#api-import)
+- **Platform bits** — Comparer/Decoder/Organizer handoffs, logging, project/extension info, Burp AI, Bambda import. [`docs`](docs/tools.md#comparer)
 
 ## Identity Matrix (2.5.0-alpha.2)
 
@@ -152,179 +244,13 @@ Artifacts: [`identity-matrix.schema.json`](identity/identity-matrix.schema.json)
 (draft 2020-12, format-assertive) · [`validate_registry.py`](identity/validate_registry.py)
 (schema + integrity gate, CI-ready) · [`session_manager.py`](identity/session_manager.py)
 (live cycle + deterministic demos A–F) · [module README](identity/README.md).
-MCP-tool integration (`identity` parameter on http tools) lands in 2.5.0.
+MCP integration is live: `identity_import` / `identity_list` / `identity_status`,
+the `identity` parameter on `http_send_request` / `http_fuzz`, and `registry_id`
+on `idor_hunt` / `access_control_sweep` / `auth_diff` identity entries.
 
-## Tools
+## Use Cases
 
-**154 MCP tools** across 38 categories. Names are stable; the authoritative count is
-`server.tools.size`, surfaced in the Server tab.
-
-### Proxy (14)
-| Tool | Description |
-|------|-------------|
-| `proxy_history` | Get HTTP proxy history with filtering (host, method, status, MIME, scope) and `order=latest` newest-first mode |
-| `proxy_history_search` | Regex search across proxy history (URL, headers, body) |
-| `proxy_traffic_stats` | Aggregate triage stats: method/status/MIME distributions, top hosts & endpoints, slowest and largest responses |
-| `proxy_websocket_history` | Get WebSocket proxy history |
-| `proxy_websocket_history_search` | Regex search WebSocket history |
-| `proxy_intercept_enable` / `proxy_intercept_disable` / `proxy_intercept_status` | Control & inspect interception |
-| `proxy_annotate` | Add highlight color and comment to a history item |
-| `proxy_set_request_rule` / `proxy_set_response_rule` | Auto modify/drop/tag matching proxy traffic |
-| `proxy_list_rules` / `proxy_remove_rule` | Manage proxy rules |
-| `proxy_auto_auth` | One-command auth-header injection for all matching requests |
-
-### HTTP (13)
-| Tool | Description |
-|------|-------------|
-| `http_send_request` | Send HTTP request (structured or raw, HTTP/1.1 or HTTP/2) |
-| `http_send_requests_parallel` | Send multiple requests in parallel (batch ops, races) |
-| `http_send_request_chain` | Multi-step request sequence with token extraction between steps |
-| `http_send_raw_bytes` | Byte-level request for smuggling and CRLF injection |
-| `http_fuzz` | Inline fuzzer — FUZZ keyword, `§marker§`, or byte-offset modes + payload libraries |
-| `http_race` | Race-condition testing — fire N requests simultaneously |
-| `http_cookie_jar_get` / `http_cookie_jar_set` | Read/write Burp's cookie jar |
-| `http_analyze_keywords` | Analyze a response for keyword occurrences |
-| `http_analyze_variations` | Detect response variations (blind injection) |
-| `http_set_traffic_rule` / `http_list_traffic_rules` / `http_remove_traffic_rule` | Global request/response rules |
-
-### Scanner (13)
-| Tool | Description |
-|------|-------------|
-| `scanner_start_crawl` | Start a web crawl from seed URLs |
-| `scanner_start_audit` | Start active/passive scan with optional auth config |
-| `scanner_task_status` / `scanner_task_list` / `scanner_task_delete` | Manage scan/crawl tasks |
-| `scanner_task_add_request` | Add a request to a running audit |
-| `scanner_task_issues` | Get issues from a specific task |
-| `scanner_get_all_issues` | All issues with severity/confidence filter |
-| `scanner_generate_report` | Generate HTML/XML scan report |
-| `scanner_create_issue` | Create a custom audit issue |
-| `scanner_import_bcheck` | Import a BCheck script for custom scanning |
-| `scanner_register_check` / `scanner_unregister_check` | Register / deregister a custom scan check |
-
-### Collaborator (7)
-| Tool | Description |
-|------|-------------|
-| `collaborator_create_client` | Create a Collaborator client for OOB testing |
-| `collaborator_restore_client` | Restore a client from its secret key |
-| `collaborator_generate_payload` | Generate a Collaborator payload |
-| `collaborator_default_payload` | Generate a payload on a shared default client (quick OOB) |
-| `collaborator_poll` | Poll for DNS / HTTP / SMTP interactions (decodes DNS qnames) |
-| `collaborator_server_info` | Get the Collaborator server address |
-| `collaborator_get_secret` | Get the client secret key for session persistence |
-
-### Intruder & Repeater (4)
-| Tool | Description |
-|------|-------------|
-| `intruder_send` / `intruder_send_with_positions` | Send to Intruder (auto or explicit positions) |
-| `intruder_register_payload_processor` | Register a custom payload processor |
-| `repeater_send` | Send request to a Repeater tab (HTTP/1.1, or native HTTP/2 via `http2=true`) |
-
-### WebSocket (7)
-| Tool | Description |
-|------|-------------|
-| `websocket_create` | Create a WebSocket connection |
-| `websocket_send_text` / `websocket_send_binary` | Send text / binary messages |
-| `websocket_close` / `websocket_list` | Close / list connections |
-| `websocket_get_messages` | Get messages with a direction filter |
-| `websocket_set_intercept_rule` | Auto-intercept WebSocket messages |
-
-### Offensive & Recon (11)
-| Tool | Description |
-|------|-------------|
-| `injection_probe` | Guided **SQLi / SSTI / LFI** with confirmation oracles (SQL-error fingerprints, time-delay, template math-eval, file markers) — not blind fuzzing |
-| `jwt_attack` | JWT offense — `alg:none`, **RS→HS** key confusion, weak-secret cracking, structural analysis |
-| `access_control_sweep` | Batch **broken-access-control / IDOR** across multiple identities |
-| `graphql_probe` | GraphQL **introspection** + field-suggestion enumeration |
-| `cors_probe` | Detect **CORS** misconfigurations (reflected / null origin, credentialed) |
-| `recon_fingerprint` | Technology + WAF fingerprinting |
-| `recon_js_endpoints` | Harvest endpoints/URLs from JavaScript files |
-| `recon_content_discovery` | Path / content discovery against a target |
-| `recon_param_mine` | Mine hidden & reflected parameters |
-| `findings_add` / `findings_list` | The agent's deduplicated working store of findings |
-
-> Offensive tools that issue live requests are **scope-gated** (see [Security](#security-model)).
-
-### Analysis (7)
-| Tool | Description |
-|------|-------------|
-| `analyze_request` / `analyze_response` | Parse HTTP messages into structured components |
-| `analyze_find_reflected` | Find parameter values reflected in a response (XSS surface) |
-| `analyze_extract_params` | Extract all parameters (URL, body, cookie, header, JSON) |
-| `analyze_insertion_points` | Scanner-style insertion points (incl. JSON-body leaves) |
-| `analyze_diff` | Compare two requests or responses |
-| `analyze_response_body_search` | Search all proxy response bodies for a pattern |
-
-### Advanced Analysis (3)
-| Tool | Description |
-|------|-------------|
-| `auth_diff` | Compare responses across auth levels → IDOR / privesc verdict |
-| `api_import_openapi` | Import OpenAPI/Swagger (with `$ref` resolution), generate requests, populate sitemap |
-| `passive_intel` | Extract secrets/tokens/IPs from proxy history — 30+ patterns, entropy de-noised |
-
-### Utilities (12)
-| Tool | Description |
-|------|-------------|
-| `util_url_encode` / `util_url_decode` | URL encoding / decoding |
-| `util_base64_encode` / `util_base64_decode` | Base64 encoding / decoding |
-| `util_html_encode` | HTML entity encoding |
-| `util_hash` | Hashing (MD5, SHA1, SHA256, SHA384, SHA512) |
-| `util_compress` / `util_decompress` | Gzip / deflate / brotli |
-| `util_random_string` / `util_random_bytes` | Random generators |
-| `util_jwt_decode` | Decode a JWT (header, payload, expiry) |
-| `util_decode_smart` | Auto-detect and decode multi-layer encoding |
-
-### Custom Scan Checks — BCheck (5) + Script (5)
-| Tool | Description |
-|------|-------------|
-| `bcheck_create` | Generate & deploy a BCheck from structured parameters |
-| `bcheck_import` | Import a raw BCheck DSL script |
-| `bcheck_templates` / `bcheck_list` / `bcheck_remove` | Templates, list, remove BChecks |
-| `scancheck_create_passive` | Passive check with multi-condition matching |
-| `scancheck_create_active` | Multi-step active check with payload chains |
-| `scancheck_templates` / `scancheck_list` / `scancheck_remove` | Templates, list, deregister script checks |
-
-### Scope & Sitemap (8)
-| Tool | Description |
-|------|-------------|
-| `scope_check` / `scope_include` / `scope_exclude` / `scope_get_config` | Target scope management |
-| `sitemap_query` / `sitemap_get_issues` / `sitemap_add_request` / `sitemap_add_issue` | Sitemap operations |
-
-### Config & Burp (16)
-| Tool | Description |
-|------|-------------|
-| `burp_version` | Burp version and edition |
-| `burp_export_project_config` / `burp_import_project_config` | Project config as JSON |
-| `burp_export_user_config` / `burp_import_user_config` | User config as JSON |
-| `burp_task_engine_state` / `burp_task_engine_set` | Pause/resume all background tasks |
-| `burp_command_line_args` | Startup arguments |
-| `burp_shutdown` | Shut down Burp (gated — see [Security](#security-model)) |
-| `config_proxy_listeners_list` / `config_proxy_listener_add` / `config_proxy_listener_remove` | Manage proxy listeners |
-| `config_match_replace_add` / `config_match_replace_list` / `config_match_replace_remove` | Manage match-and-replace rules |
-| `config_upstream_proxy_set` | Configure an upstream proxy (Tor, corporate) |
-
-### Platform (25)
-| Tool | Description |
-|------|-------------|
-| `session_create_token_rule` / `session_list_rules` / `session_remove_rule` | Session-handling rules (extract → inject) |
-| `events_get` / `events_get_by_type` / `events_subscribe` / `events_unsubscribe` / `events_clear` | Event system |
-| `persistence_store` / `persistence_get` / `persistence_delete` / `persistence_list` | Project data storage |
-| `preference_store` / `preference_get` | Global preferences |
-| `decoder_send` / `comparer_send` | Send to Decoder / Comparer |
-| `organizer_send` / `organizer_get_items` | Organizer management |
-| `log_message` / `log_event` | Burp logging |
-| `ai_status` / `ai_prompt` | Burp AI integration (Burp 2025+) |
-| `bambda_import` | Import Bambda scripts |
-| `project_info` / `extension_info` | Project & extension metadata |
-
-### Resources (8)
-Read-only MCP resources an agent can fetch without a tool call:
-`burp://proxy/history` · `burp://proxy/websocket/history` · `burp://scanner/issues` ·
-`burp://sitemap` · `burp://scope` · `burp://config/project` · `burp://config/user` ·
-`burp://organizer/items`
-
----
-
-## Highlight Features
+What to hand an LLM agent first, and what it can confirm on its own.
 
 ### Guided Injection Probe
 ```
@@ -357,7 +283,8 @@ auth_diff / access_control_sweep
   ]
 ```
 Replays the same request(s) across identities, diffs the responses, and flags **IDOR**,
-privilege escalation, and missing authorization.
+privilege escalation, and missing authorization. With an imported registry, replace the
+header pairs with `{"name": "user", "registry_id": "id:user-1", "object_id": …, "canary": …}`.
 
 ### Race Condition Testing
 ```
@@ -400,7 +327,8 @@ and sitemap. Out-of-scope sends are skipped and reported.
 ```
 passive_intel(max_items: 2000, in_scope_only: true)
 ```
-Scans captured traffic for 30+ patterns with entropy de-noising to cut false positives:
+Scans captured traffic for 30+ patterns with entropy de-noising and MIME scoping to cut
+false positives:
 - **Cloud credentials** — AWS keys, Google/Slack/Stripe/GitHub tokens
 - **Tokens & secrets** — JWTs, Bearer/Basic auth, private keys
 - **Personal data** — emails, internal IPs, phone numbers
@@ -547,18 +475,6 @@ Builds the JAR, optionally configures Caddy, and prints the MCP config to add.
 
 ---
 
-## Architecture
-
-![BurpMCP-Ultra architecture](docs/architecture.png)
-
-Reading order — top to bottom, left to right: the MCP client talks JSON-RPC over
-SSE to the extension's transport; the `ToolRegistry` fans tool calls out to the
-bridge layer, which drives Burp's Montoya API (Proxy, Scanner, Intruder,
-Repeater, Collaborator). The Identity Matrix (right) resolves imported
-identities and applies credentials atomically to outgoing requests; the manager
-side (bottom right) resolves vault secrets and serializes egress grants to
-Burp's global upstream. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
-
 ## Tech Stack
 
 | Component | Version |
@@ -605,7 +521,7 @@ cd BurpMCP-Ultra
 git clone https://github.com/elmiedo/BurpMCP-Ultra.git
 cd BurpMCP-Ultra
 :: Gradle auto-selects an installed JDK 17 for the build daemon, so this works even if your
-:: default java is Burp's Java 25. If no JDK 17 is discoverable, install one (or set JAVA_HOME).
+:: default `java` is Burp's Java 25. If no JDK 17 is discoverable, install one (or set JAVA_HOME).
 gradlew.bat shadowJar
 :: Output: build\libs\burpmcp-ultra-2.5.0-alpha.2.jar
 ```
@@ -621,18 +537,19 @@ BurpMCP-Ultra/
 ├── build.gradle.kts              # Build configuration
 ├── gradle/                       # Wrapper + daemon-JVM pin (JDK 17)
 ├── configs/                      # Ready-to-use config files (Caddyfile, MCP JSON, setup.sh)
+├── scripts/gen_tool_docs.py      # Regenerates docs/tools.md from source
 ├── src/main/kotlin/com/burpmcp/ultra/
 │   ├── core/                     # Extension entry point + helpers
-│   ├── bridge/                   # 32 Montoya API bridges
-│   ├── tools/                    # 38 tool category modules (154 tools)
+│   ├── bridge/                   # Montoya API bridges
+│   ├── tools/                    # 38 tool class modules (154 tools)
 │   ├── safety/                   # Scope gate, action policy, ReDoS-safe regex
 │   ├── transport/                # MCP server + dashboard + security
 │   ├── events/                   # Unified event bus
 │   ├── state/                    # State management
 │   └── ui/                       # Swing UI tab
-├── identity/                     # Identity Matrix module (2.5.0-alpha.1+): schema, validator, session manager
-├── src/test/                     # 105 unit tests
-└── docs/                         # Tool catalog + capability review
+├── identity/                     # Identity Matrix module: schema, validator, session manager
+├── src/test/                     # 451 unit tests
+└── docs/                         # Tool reference (tools.md), architecture, capability review
 ```
 
 ---

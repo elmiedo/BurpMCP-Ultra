@@ -4,6 +4,30 @@ All notable changes to BurpMCP-Ultra are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/) (see `docs/ROADMAP.md` for the semver convention).
 
+## [Unreleased]
+
+### Fixed
+- **`identity` header/bearer injections silently vanished from the wire** (live
+  e2e against 2.5.0-alpha.2): `HttpRequest.withUpdatedHeader` is a no-op when
+  the header is absent on Montoya 2026.2, so `bearer`/`header` credentials
+  planned by `identity_import` never reached the sent request — only
+  cookie/query injections (parameters API) survived. `IdentityApplier` now
+  upserts headers (replace when present, add when absent). Unit tests can't
+  catch this (Montoya is compileOnly; requests can't be built off-Burp) — the
+  regression gate is the live identity smoke: `identity_import(secrets)` →
+  `http_send_request(identity=…)` must show `Authorization`/injected headers in
+  the echoed request headers.
+
+### Added
+- **`identity/manager/`** — manager-side runtime components:
+  - `mcp_client.py` — async SSE/JSON-RPC client for the extension's MCP
+    transport (connect, `tools/list`, `tools/call` with error surfacing).
+  - `data_client.py` — `IdentityPlane`: per-identity httpx client with pinned
+    egress per `presentation.egress_ref` (operator-supplied egress map),
+    same atomic cookie/header/bearer/query application and scope gate as the
+    Burp side. This is the `parallel` execution mode's data plane: Montoya's
+    upstream is global, so per-identity egress lives here, not in Burp.
+
 ## [2.5.0-alpha.2] — 2026-10-07 — Identity MCP surface + triage fixes
 
 First jar release where the Identity Matrix is callable from MCP. Also carries

@@ -40,8 +40,8 @@ object IdentityApplier {
             val value = IdentityStore.secretFor(credential) ?: continue
             when (inject) {
                 "cookie" -> current = upsertCookie(current, name, value)
-                "header", "authorization" -> current = current.withUpdatedHeader(name, value)
-                "bearer" -> current = current.withUpdatedHeader("Authorization", "Bearer $value")
+                "header", "authorization" -> current = upsertHeader(current, name, value)
+                "bearer" -> current = upsertHeader(current, "Authorization", "Bearer $value")
                 "query" -> current = upsertQuery(current, name, value)
                 else -> applied += "skipped:${credential}(${inject} not request-layer)"
             }
@@ -49,6 +49,13 @@ object IdentityApplier {
         }
         return Outcome(current, applied, null)
     }
+
+    // withUpdatedHeader is a no-op when the header is absent (verified live on
+    // Montoya 2026.2: bearer/header injections silently vanished from the wire),
+    // so presence-check and fall back to withHeader.
+    private fun upsertHeader(request: HttpRequest, name: String, value: String): HttpRequest =
+        if (request.hasHeader(name)) request.withUpdatedHeader(name, value)
+        else request.withHeader(name, value)
 
     private fun upsertCookie(request: HttpRequest, name: String, value: String): HttpRequest =
         upsert(request, HttpParameter.cookieParameter(name, value))

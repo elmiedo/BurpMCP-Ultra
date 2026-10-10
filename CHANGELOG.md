@@ -4,7 +4,7 @@ All notable changes to BurpMCP-Ultra are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/) (see `docs/ROADMAP.md` for the semver convention).
 
-## [Unreleased]
+## [2.5.0-alpha.3] — 2026-10-10 — Wire fix: identity header/bearer injections
 
 ### Fixed
 - **`identity` header/bearer injections silently vanished from the wire** (live
